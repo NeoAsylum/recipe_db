@@ -22,7 +22,7 @@ import jdbc_recipe_db.databaseaccess.RecipeDAO;
 public class RecipePanel extends JPanel {
 
     private RecipeDAO recipeDAO = new RecipeDAO();
-    private JTextField recipeIdField, recipeNameField, recipeDescField, recipeInstField;
+    private JTextField recipeIdField, recipeNameField, recipeDescField, recipeInstField, recipeCookTimeField, recipePrepTimeField;
     private JTextArea outputArea;
 
     public RecipePanel() {
@@ -32,7 +32,7 @@ public class RecipePanel extends JPanel {
 
     private void createUI() {
         // Input Panel
-        JPanel inputPanel = new JPanel(new GridLayout(5, 2, 10, 10));
+        JPanel inputPanel = new JPanel(new GridLayout(6, 2, 10, 10));
         inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         inputPanel.add(new JLabel("Recipe ID:"));
@@ -50,6 +50,15 @@ public class RecipePanel extends JPanel {
         inputPanel.add(new JLabel("Instructions:"));
         recipeInstField = new JTextField(20);
         inputPanel.add(recipeInstField);
+
+        inputPanel.add(new JLabel("Cook time:"));
+        recipeCookTimeField = new JTextField(20);
+        inputPanel.add(recipeCookTimeField);
+
+        inputPanel.add(new JLabel("Prep time:"));
+        recipePrepTimeField = new JTextField(20);
+        inputPanel.add(recipePrepTimeField);
+        
 
         add(inputPanel, BorderLayout.NORTH);
 
@@ -91,7 +100,10 @@ public class RecipePanel extends JPanel {
         String name = recipeNameField.getText();
         String description = recipeDescField.getText();
         String instructions = recipeInstField.getText();
-        boolean success = recipeDAO.createRecipe(name, description, instructions, 0, 0);
+        int cookTime = Integer.parseInt(recipeCookTimeField.getText());
+        int prepTime = Integer.parseInt(recipePrepTimeField.getText());
+
+        boolean success = recipeDAO.createRecipe(name, description, instructions, cookTime, prepTime);
         outputArea.setText(success ? "✅ Recipe added: " + name : "❌ Failed to add recipe.");
     }
 
@@ -102,12 +114,19 @@ public class RecipePanel extends JPanel {
 
     private void updateRecipe() {
         try {
-            int id = Integer.parseInt(recipeIdField.getText());
+            int id = Integer.parseInt(recipeIdField.getText().trim());
+            System.out.println("ddddddd --- "+id);
             String name = recipeNameField.getText();
-            boolean success = recipeDAO.updateRecipe(id, name);
-            outputArea.setText(success ? "✅ Recipe updated: " + name : "❌ No recipe found with ID: " + id);
+            String description = recipeDescField.getText();
+            String instructions = recipeInstField.getText();
+            int cookTime = Integer.parseInt(recipeCookTimeField.getText().trim());
+            int prepTime = Integer.parseInt(recipePrepTimeField.getText().trim());
+
+            boolean success = recipeDAO.updateRecipe(id, name, description, instructions, cookTime, prepTime);
+            outputArea.setText(success ? " Recipe updated: " + name : " No recipe found with ID: " + id);
         } catch (NumberFormatException ex) {
             outputArea.setText("❗ Invalid ID format!");
+            ex.printStackTrace();
         }
     }
 

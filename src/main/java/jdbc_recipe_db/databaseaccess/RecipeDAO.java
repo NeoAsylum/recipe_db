@@ -56,14 +56,17 @@ public class RecipeDAO {
     }
     
 
-    public boolean updateRecipe(int id, String name) {
-        String sql = "UPDATE Recipe SET name=? WHERE id=?";
+    public boolean updateRecipe(int id, String name, String description, String instructions, int prepTime, int cookTime) {
+        String sql = "UPDATE Recipe SET name=?, description=?, instructions=?, prep_time=?, cook_time=? WHERE id=?";
         try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
             stmt.setString(1, name);
-            stmt.setInt(2, id);
-
+            stmt.setString(2, description);
+            stmt.setString(3, instructions);
+            stmt.setInt(4, prepTime);
+            stmt.setInt(5, cookTime);
+            stmt.setInt(6, id);
             int rowsAffected = stmt.executeUpdate();
-            return rowsAffected > 0; // ✅ Only return true if something was updated
+            return rowsAffected > 0;
         } catch (SQLException e) {
             e.printStackTrace();
             return false;

@@ -11,7 +11,7 @@ public final class DatabaseUtil {
 
     private static final String URL = "jdbc:mysql://localhost:3306/FoodRecipesDB"; // Your DB name
     private static final String USER = "root"; // Replace with MySQL username
-    private static final String PASSWORD = "passwort"; // Replace with MySQL password
+    private static final String PASSWORD = ""; // Replace with MySQL password
     protected static Connection connection;
 
     public static Connection getConnection() {
