@@ -58,6 +58,7 @@ public class RecipeDAO {
 
     public boolean updateRecipe(int id, String name, String description, String instructions, int prepTime, int cookTime) {
         String sql = "UPDATE Recipe SET name=?, description=?, instructions=?, prep_time=?, cook_time=? WHERE id=?";
+        // implement transaction to make each field update in a seperate sql query, bcs right now users have to fill out each field to not set them to null which is fucking annoying
         try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
             stmt.setString(1, name);
             stmt.setString(2, description);

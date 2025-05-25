@@ -29,10 +29,12 @@ public class RecipeAppGUI extends JFrame {
 
         JTabbedPane tabbedPane = new JTabbedPane();
         tabbedPane.addTab("Recipes", new RecipePanel());
-        tabbedPane.addTab("Recipe Categories", new RecipeCategoryPanel()); // Use separate class
+        tabbedPane.addTab("Recipe Categories", new RecipeCategoryPanel());
         tabbedPane.addTab("Ingredients", new IngredientsPanel());
         tabbedPane.addTab("Categories", new CategoryPanel());
         tabbedPane.addTab("Recipe Ingredients", new RecipeIngredientPanel());
+        tabbedPane.addTab("Deletion Log", new DeletionLogPanel());
+
         SwingUtilities.updateComponentTreeUI(this);
 
         add(tabbedPane, BorderLayout.CENTER);
