@@ -4,7 +4,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class RecipeDAO {
 
@@ -25,12 +27,33 @@ public class RecipeDAO {
         }
     }
 
+    // New method to get full recipe details as a Map by ID
+    public Map<String, String> getRecipeDetailsById(int recipeId) {
+        Map<String, String> details = new HashMap<>();
+        String sql = "SELECT name, description, instructions, prep_time, cook_time FROM Recipe WHERE id = ?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, recipeId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    details.put("name", rs.getString("name"));
+                    details.put("description", rs.getString("description"));
+                    details.put("instructions", rs.getString("instructions"));
+                    details.put("prep_time", String.valueOf(rs.getInt("prep_time")));
+                    details.put("cook_time", String.valueOf(rs.getInt("cook_time")));
+                    return details;
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null; // Return null if recipe not found or error
+    }
+
     public List<String> getRecipes() {
         List<String> recipes = new ArrayList<>();
         String sql = "SELECT * FROM Recipe";
-        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
-    
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql); ResultSet rs = stmt.executeQuery()) {
+
             while (rs.next()) {
                 // Retrieve all attributes from the Recipe table
                 int id = rs.getInt("id");
@@ -39,13 +62,13 @@ public class RecipeDAO {
                 String instructions = rs.getString("instructions");
                 int prepTime = rs.getInt("prep_time");
                 int cookTime = rs.getInt("cook_time");
-    
+
                 // Format them into a string
                 String recipeDetails = String.format(
-                    "ID: %d | Name: %s | Description: %s | Instructions: %s | Prep Time: %d min | Cook Time: %d min",
-                    id, name, description, instructions, prepTime, cookTime
+                        "ID: %d | Name: %s | Description: %s | Instructions: %s | Prep Time: %d min | Cook Time: %d min",
+                        id, name, description, instructions, prepTime, cookTime
                 );
-    
+
                 // Add formatted string to the list
                 recipes.add(recipeDetails);
             }
@@ -54,7 +77,6 @@ public class RecipeDAO {
         }
         return recipes;
     }
-    
 
     public boolean updateRecipe(int id, String name, String description, String instructions, int prepTime, int cookTime) {
         String sql = "UPDATE Recipe SET name=?, description=?, instructions=?, prep_time=?, cook_time=? WHERE id=?";
@@ -85,6 +107,22 @@ public class RecipeDAO {
             e.printStackTrace();
             return false;
         }
+    }
+
+    // New method to get ID-Name summaries for the JComboBox
+    public List<String> getRecipeIdNameSummaries() {
+        List<String> recipeSummaries = new ArrayList<>();
+        String sql = "SELECT id, name FROM Recipe ORDER BY id";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql); ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                int id = rs.getInt("id");
+                String name = rs.getString("name");
+                recipeSummaries.add(String.format("ID: %d - %s", id, name));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return recipeSummaries;
     }
 
 }
