@@ -39,8 +39,4 @@ public class RecipeAppGUI extends JFrame {
 
         add(tabbedPane, BorderLayout.CENTER);
     }
-
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new RecipeAppGUI().setVisible(true));
-    }
 }

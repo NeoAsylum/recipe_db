@@ -7,26 +7,26 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.util.List;
-import java.util.Map; // Import Map
+import java.util.Map;
 
 import javax.swing.BorderFactory;
-import javax.swing.DefaultComboBoxModel; // Import DefaultComboBoxModel
+import javax.swing.DefaultComboBoxModel;
 import javax.swing.JButton;
-import javax.swing.JComboBox; // Import JComboBox
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
-import javax.swing.event.PopupMenuEvent; // Import PopupMenuEvent
-import javax.swing.event.PopupMenuListener; // Import PopupMenuListener
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
 
 import jdbc_recipe_db.databaseaccess.IngredientDAO;
 
 public class IngredientsPanel extends JPanel {
 
-    private IngredientDAO ingredientDAO;
-    // private JTextField ingredientIdField; // Remove this
+    private final IngredientDAO ingredientDAO;
+    // private JTextField ingredientIdField;
     private JTextField ingredientNameField, caloriesField, proteinField, fatField, carbField, fiberField;
     private JTextArea outputArea;
     private JComboBox<String> ingredientIdComboBox; // JComboBox for ingredient selection
@@ -102,10 +102,14 @@ public class IngredientsPanel extends JPanel {
             public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
                 populateIngredientIdComboBox();
             }
+
             @Override
-            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+            }
+
             @Override
-            public void popupMenuCanceled(PopupMenuEvent e) {}
+            public void popupMenuCanceled(PopupMenuEvent e) {
+            }
         });
 
         // Load details when an item is selected
@@ -119,7 +123,7 @@ public class IngredientsPanel extends JPanel {
         readBtn.addActionListener(e -> readIngredients());
         updateBtn.addActionListener(e -> updateIngredient());
         deleteBtn.addActionListener(e -> deleteIngredient());
-        
+
         // Initial population
         populateIngredientIdComboBox();
     }
@@ -138,19 +142,19 @@ public class IngredientsPanel extends JPanel {
             }
             if (selectedItemBeforeUpdate != null && ingredientSummaries.contains(selectedItemBeforeUpdate)) {
                 ingredientIdComboBox.setSelectedItem(selectedItemBeforeUpdate);
-            } else if (!ingredientSummaries.isEmpty()){
+            } else if (!ingredientSummaries.isEmpty()) {
                 ingredientIdComboBox.setSelectedIndex(-1); // Default to no selection or first item
             }
         }
-         if (ingredientIdComboBox.getSelectedIndex() == -1) {
-             clearInputFields(false);
+        if (ingredientIdComboBox.getSelectedIndex() == -1) {
+            clearInputFields(false);
         }
         isPopulatingComboBox = false;
     }
-    
+
     private int parseIdFromSelectedItem(String selectedItem) {
         if (selectedItem == null || !selectedItem.startsWith("ID: ")) {
-            return -1; 
+            return -1;
         }
         try {
             String idStr = selectedItem.substring(4, selectedItem.indexOf(" - "));
@@ -187,7 +191,7 @@ public class IngredientsPanel extends JPanel {
             clearInputFields(false);
         }
     }
-    
+
     private void clearInputFields(boolean clearComboBoxAlso) {
         if (clearComboBoxAlso) {
             ingredientIdComboBox.setSelectedIndex(-1);
@@ -220,7 +224,7 @@ public class IngredientsPanel extends JPanel {
                 populateIngredientIdComboBox();
                 clearInputFields(true);
             } else {
-                 outputArea.setText("❌ Failed to create ingredient.");
+                outputArea.setText("❌ Failed to create ingredient.");
             }
         } catch (NumberFormatException ex) {
             outputArea.setText("❗ Invalid input format! Please enter valid numbers for nutritional values.");
@@ -239,7 +243,9 @@ public class IngredientsPanel extends JPanel {
             return;
         }
         int id = parseIdFromSelectedItem(selectedItem);
-        if (id == -1) return;
+        if (id == -1) {
+            return;
+        }
 
         try {
             String name = ingredientNameField.getText();
@@ -257,7 +263,7 @@ public class IngredientsPanel extends JPanel {
             if (success) {
                 outputArea.setText("✅ Ingredient updated: " + name);
                 populateIngredientIdComboBox();
-                
+
                 // Attempt to re-select the updated item
                 String potentiallyUpdatedItemSummary = String.format("ID: %d - %s", id, name);
                 DefaultComboBoxModel<String> model = (DefaultComboBoxModel<String>) ingredientIdComboBox.getModel();
@@ -282,7 +288,9 @@ public class IngredientsPanel extends JPanel {
             return;
         }
         int id = parseIdFromSelectedItem(selectedItem);
-        if (id == -1) return;
+        if (id == -1) {
+            return;
+        }
 
         try {
             boolean success = ingredientDAO.deleteIngredient(id);
