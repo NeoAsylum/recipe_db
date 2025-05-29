@@ -7,37 +7,44 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.util.List;
+import java.util.Map; // Import Map
 
 import javax.swing.BorderFactory;
+import javax.swing.DefaultComboBoxModel; // Import DefaultComboBoxModel
 import javax.swing.JButton;
+import javax.swing.JComboBox; // Import JComboBox
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.event.PopupMenuEvent; // Import PopupMenuEvent
+import javax.swing.event.PopupMenuListener; // Import PopupMenuListener
 
 import jdbc_recipe_db.databaseaccess.IngredientDAO;
 
 public class IngredientsPanel extends JPanel {
 
     private IngredientDAO ingredientDAO;
-    private JTextField ingredientIdField, ingredientNameField, caloriesField, proteinField, fatField, carbField, fiberField;
+    // private JTextField ingredientIdField; // Remove this
+    private JTextField ingredientNameField, caloriesField, proteinField, fatField, carbField, fiberField;
     private JTextArea outputArea;
+    private JComboBox<String> ingredientIdComboBox; // JComboBox for ingredient selection
+    private boolean isPopulatingComboBox = false; // Flag to prevent event recursion
 
     public IngredientsPanel() {
         setLayout(new BorderLayout());
-        ingredientDAO = new IngredientDAO(); // Initialize DAO
+        ingredientDAO = new IngredientDAO();
         createUI();
     }
 
     private void createUI() {
-        // Input Panel
         JPanel inputPanel = new JPanel(new GridLayout(7, 2, 10, 10));
         inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        inputPanel.add(new JLabel("Ingredient ID:"));
-        ingredientIdField = new JTextField(20);
-        inputPanel.add(ingredientIdField);
+        inputPanel.add(new JLabel("Select Ingredient:")); // Changed label
+        ingredientIdComboBox = new JComboBox<>(); // Initialize JComboBox
+        inputPanel.add(ingredientIdComboBox);
 
         inputPanel.add(new JLabel("Ingredient Name:"));
         ingredientNameField = new JTextField(20);
@@ -65,18 +72,15 @@ public class IngredientsPanel extends JPanel {
 
         add(inputPanel, BorderLayout.NORTH);
 
-        // Buttons Panel
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
         JButton createBtn = new JButton("Create");
         createBtn.setPreferredSize(new Dimension(80, 30));
-        JButton readBtn = new JButton("Read");
-        readBtn.setPreferredSize(new Dimension(80, 30));
+        JButton readBtn = new JButton("Read All"); // Changed label for clarity
+        readBtn.setPreferredSize(new Dimension(100, 30));
         JButton updateBtn = new JButton("Update");
         updateBtn.setPreferredSize(new Dimension(80, 30));
         JButton deleteBtn = new JButton("Delete");
         deleteBtn.setPreferredSize(new Dimension(80, 30));
-
-
 
         buttonPanel.add(createBtn);
         buttonPanel.add(readBtn);
@@ -84,26 +88,126 @@ public class IngredientsPanel extends JPanel {
         buttonPanel.add(deleteBtn);
         add(buttonPanel, BorderLayout.CENTER);
 
-        // Output Panel
         outputArea = new JTextArea(10, 50);
         outputArea.setEditable(false);
         outputArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
         outputArea.setBackground(new Color(40, 40, 40));
         outputArea.setForeground(Color.WHITE);
         outputArea.setBorder(BorderFactory.createLineBorder(Color.GRAY));
-
         add(new JScrollPane(outputArea), BorderLayout.SOUTH);
 
-        // Button Actions
+        // Populate JComboBox when it's about to become visible
+        ingredientIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override
+            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+                populateIngredientIdComboBox();
+            }
+            @Override
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
+            @Override
+            public void popupMenuCanceled(PopupMenuEvent e) {}
+        });
+
+        // Load details when an item is selected
+        ingredientIdComboBox.addActionListener(e -> {
+            if (!isPopulatingComboBox && ingredientIdComboBox.getSelectedItem() != null) {
+                loadSelectedIngredientDetails();
+            }
+        });
+
         createBtn.addActionListener(e -> createIngredient());
         readBtn.addActionListener(e -> readIngredients());
         updateBtn.addActionListener(e -> updateIngredient());
         deleteBtn.addActionListener(e -> deleteIngredient());
+        
+        // Initial population
+        populateIngredientIdComboBox();
+    }
+
+    private void populateIngredientIdComboBox() {
+        isPopulatingComboBox = true;
+        String selectedItemBeforeUpdate = (String) ingredientIdComboBox.getSelectedItem();
+        ingredientIdComboBox.removeAllItems(); // Important to call before adding new items
+
+        List<String> ingredientSummaries = ingredientDAO.getIngredientIdNameSummaries();
+        if (ingredientSummaries.isEmpty()) {
+            outputArea.append("\nNo ingredients available to select.");
+        } else {
+            for (String summary : ingredientSummaries) {
+                ingredientIdComboBox.addItem(summary);
+            }
+            if (selectedItemBeforeUpdate != null && ingredientSummaries.contains(selectedItemBeforeUpdate)) {
+                ingredientIdComboBox.setSelectedItem(selectedItemBeforeUpdate);
+            } else if (!ingredientSummaries.isEmpty()){
+                ingredientIdComboBox.setSelectedIndex(-1); // Default to no selection or first item
+            }
+        }
+         if (ingredientIdComboBox.getSelectedIndex() == -1) {
+             clearInputFields(false);
+        }
+        isPopulatingComboBox = false;
+    }
+    
+    private int parseIdFromSelectedItem(String selectedItem) {
+        if (selectedItem == null || !selectedItem.startsWith("ID: ")) {
+            return -1; 
+        }
+        try {
+            String idStr = selectedItem.substring(4, selectedItem.indexOf(" - "));
+            return Integer.parseInt(idStr.trim());
+        } catch (Exception e) {
+            outputArea.setText("❗ Error parsing ID from selected item: " + selectedItem);
+            e.printStackTrace();
+            return -1;
+        }
+    }
+
+    private void loadSelectedIngredientDetails() {
+        String selectedItem = (String) ingredientIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            clearInputFields(false);
+            return;
+        }
+        int ingredientId = parseIdFromSelectedItem(selectedItem);
+        if (ingredientId == -1) {
+            clearInputFields(false);
+            return;
+        }
+
+        Map<String, String> details = ingredientDAO.getIngredientDetailsById(ingredientId);
+        if (details != null) {
+            ingredientNameField.setText(details.get("name"));
+            caloriesField.setText(details.get("calories"));
+            proteinField.setText(details.get("protein"));
+            fatField.setText(details.get("fat"));
+            carbField.setText(details.get("carbohydrates"));
+            fiberField.setText(details.get("fiber"));
+        } else {
+            outputArea.setText("❌ Error: Could not load details for Ingredient ID: " + ingredientId);
+            clearInputFields(false);
+        }
+    }
+    
+    private void clearInputFields(boolean clearComboBoxAlso) {
+        if (clearComboBoxAlso) {
+            ingredientIdComboBox.setSelectedIndex(-1);
+        }
+        ingredientNameField.setText("");
+        caloriesField.setText("");
+        proteinField.setText("");
+        fatField.setText("");
+        carbField.setText("");
+        fiberField.setText("");
     }
 
     private void createIngredient() {
         try {
             String name = ingredientNameField.getText();
+            if (name.trim().isEmpty()) {
+                outputArea.setText("❗ Ingredient name cannot be empty.");
+                return;
+            }
+            // Add similar checks for other fields if they cannot be empty or need specific formats
             int calories = Integer.parseInt(caloriesField.getText());
             float protein = Float.parseFloat(proteinField.getText());
             float fat = Float.parseFloat(fatField.getText());
@@ -111,9 +215,15 @@ public class IngredientsPanel extends JPanel {
             float fiber = Float.parseFloat(fiberField.getText());
 
             boolean success = ingredientDAO.createIngredient(name, calories, protein, fat, carbohydrates, fiber);
-            outputArea.setText(success ? "✅ Ingredient created!" : "❌ Failed to create ingredient.");
+            if (success) {
+                outputArea.setText("✅ Ingredient created: " + name);
+                populateIngredientIdComboBox();
+                clearInputFields(true);
+            } else {
+                 outputArea.setText("❌ Failed to create ingredient.");
+            }
         } catch (NumberFormatException ex) {
-            outputArea.setText("❗ Invalid input format! Please enter numeric values.");
+            outputArea.setText("❗ Invalid input format! Please enter valid numbers for nutritional values.");
         }
     }
 
@@ -123,9 +233,20 @@ public class IngredientsPanel extends JPanel {
     }
 
     private void updateIngredient() {
+        String selectedItem = (String) ingredientIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select an ingredient from the dropdown to update.");
+            return;
+        }
+        int id = parseIdFromSelectedItem(selectedItem);
+        if (id == -1) return;
+
         try {
-            int id = Integer.parseInt(ingredientIdField.getText());
             String name = ingredientNameField.getText();
+            if (name.trim().isEmpty()) {
+                outputArea.setText("❗ Ingredient name cannot be empty for update.");
+                return;
+            }
             int calories = Integer.parseInt(caloriesField.getText());
             float protein = Float.parseFloat(proteinField.getText());
             float fat = Float.parseFloat(fatField.getText());
@@ -133,19 +254,48 @@ public class IngredientsPanel extends JPanel {
             float fiber = Float.parseFloat(fiberField.getText());
 
             boolean success = ingredientDAO.updateIngredient(id, name, calories, protein, fat, carbohydrates, fiber);
-            outputArea.setText(success ? "✅ Ingredient updated!" : "❌ No record found with ID: " + id);
+            if (success) {
+                outputArea.setText("✅ Ingredient updated: " + name);
+                populateIngredientIdComboBox();
+                
+                // Attempt to re-select the updated item
+                String potentiallyUpdatedItemSummary = String.format("ID: %d - %s", id, name);
+                DefaultComboBoxModel<String> model = (DefaultComboBoxModel<String>) ingredientIdComboBox.getModel();
+                for (int i = 0; i < model.getSize(); i++) {
+                    if (model.getElementAt(i).equals(potentiallyUpdatedItemSummary)) {
+                        ingredientIdComboBox.setSelectedIndex(i);
+                        break;
+                    }
+                }
+            } else {
+                outputArea.setText("❌ No ingredient found with ID: " + id + " or update failed.");
+            }
         } catch (NumberFormatException ex) {
-            outputArea.setText("❗ Invalid input format! Please enter numeric values.");
+            outputArea.setText("❗ Invalid input format! Please enter valid numbers for nutritional values.");
         }
     }
 
     private void deleteIngredient() {
+        String selectedItem = (String) ingredientIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select an ingredient from the dropdown to delete.");
+            return;
+        }
+        int id = parseIdFromSelectedItem(selectedItem);
+        if (id == -1) return;
+
         try {
-            int id = Integer.parseInt(ingredientIdField.getText());
             boolean success = ingredientDAO.deleteIngredient(id);
-            outputArea.setText(success ? "🗑️ Ingredient deleted!" : "❌ No record found with ID: " + id);
-        } catch (NumberFormatException ex) {
-            outputArea.setText("❗ Invalid input format! Please enter a numeric ID.");
+            if (success) {
+                outputArea.setText("🗑️ Ingredient deleted (ID: " + id + ")");
+                populateIngredientIdComboBox();
+                clearInputFields(true);
+            } else {
+                outputArea.setText("❌ No ingredient found with ID: " + id + " or delete failed.");
+            }
+        } catch (Exception ex) {
+            outputArea.setText("❗ An error occurred during deletion.");
+            ex.printStackTrace();
         }
     }
 }
