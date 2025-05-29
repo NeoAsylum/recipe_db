@@ -6,7 +6,7 @@ import jdbc_recipe_db.ui.RecipeAppGUI;
 
 public class main {
 
-    public main() {
+    public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new RecipeAppGUI().setVisible(true));
     }
 }
