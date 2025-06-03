@@ -6,6 +6,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -23,7 +24,6 @@ import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
 
 import recipedb.dao.UserDAO;
-import recipedb.model.Category;
 import recipedb.model.User;
 
 public class UserPanel extends JPanel {
@@ -42,21 +42,21 @@ public class UserPanel extends JPanel {
     }
 
     private void createUI() {
-        JPanel inputPanel = new JPanel(new GridLayout(2, 2, 10, 10)); // Only 2 rows needed now
+        JPanel inputPanel = new JPanel(new GridLayout(3, 2, 10, 10));
         inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        inputPanel.add(new JLabel("Select User:")); // Changed label
-        userIdComboBox = new JComboBox<>(); // Initialize JComboBox
+        inputPanel.add(new JLabel("Select User:"));
+        userIdComboBox = new JComboBox<>();
         inputPanel.add(userIdComboBox);
 
         inputPanel.add(new JLabel("Username:"));
         usernameField = new JTextField(20);
         inputPanel.add(usernameField);
-        
+
         inputPanel.add(new JLabel("Password:"));
         passwordField = new JPasswordField(20);
         inputPanel.add(passwordField);
-        
+
         add(inputPanel, BorderLayout.NORTH);
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
@@ -102,14 +102,14 @@ public class UserPanel extends JPanel {
         // Load details when an item is selected
         userIdComboBox.addActionListener(e -> {
             if (!isPopulatingComboBox && userIdComboBox.getSelectedItem() != null) {
-            	populateUserIdComboBox();
+                loadSelectedUserDetails();
             }
-        });                
+        });
 
         createBtn.addActionListener(e -> createUser());
-//        readBtn.addActionListener(e -> readCategories());
-//        updateBtn.addActionListener(e -> updateCategory());
-//        deleteBtn.addActionListener(e -> delete());
+        readBtn.addActionListener(e -> readUsers());
+        updateBtn.addActionListener(e -> updateUser());
+        deleteBtn.addActionListener(e -> deleteUser());
 
         // Initial population
         populateUserIdComboBox();
@@ -143,8 +143,8 @@ public class UserPanel extends JPanel {
         User selectedItem = (User) userIdComboBox.getSelectedItem();
         if (selectedItem == null) {
             clearInputFields(false); // Only clear name field
-//            return;
-        } 
+            return;
+        }
 
         User user = userDAO.findById(selectedItem.getId());
         if (user != null) {
@@ -165,7 +165,7 @@ public class UserPanel extends JPanel {
 
     private void createUser() {
         String username = usernameField.getText();
-        String password = passwordField.getText();
+        String password = Arrays.toString(passwordField.getPassword());
         if (username.trim().isEmpty()) {
             outputArea.setText("❗ Username cannot be empty.");
             return;
@@ -189,68 +189,71 @@ public class UserPanel extends JPanel {
         }
     }
 
-//    private void readCategories() {
-//        // Uses the DAO's getCategories which returns "ID: id | Name: name"
-//        List<Category> categories = categoryDAO.findAll();
-//        outputArea.setText("📂 Categories:\n" + categories.stream().map(Category::toString).collect(Collectors.joining("\n")));
-//    }
+    private void readUsers() {
+        List<User> users = userDAO.findAll();
+        outputArea.setText("📂 Users:\n" + users.stream().map(User::toString).collect(Collectors.joining("\n")));
+    }
 
-//    private void updateCategory() {
-//        Category selectedItem = (Category) categoryIdComboBox.getSelectedItem();
-//        if (selectedItem == null) {
-//            outputArea.setText("❗ Please select a category from the dropdown to update.");
-//            return;
-//        }
-//
-//        String name = categoryNameField.getText();
-//        if (name.trim().isEmpty()) {
-//            outputArea.setText("❗ Category name cannot be empty for update.");
-//            return;
-//        }
-//
-//        try {
-//            boolean success = categoryDAO.update(new Category(selectedItem.getId(), name));
-//            if (success) {
-//                outputArea.setText("✅ Category updated: " + name);
-//                populateCategoryIdComboBox();
-//
-//                // Attempt to re-select the updated item
-//                String potentiallyUpdatedItemSummary = String.format("ID: %d - %s", selectedItem.getId(), name);
-//                DefaultComboBoxModel<Category> model = (DefaultComboBoxModel<Category>) categoryIdComboBox.getModel();
-//                for (int i = 0; i < model.getSize(); i++) {
-//                    if (model.getElementAt(i).equals(potentiallyUpdatedItemSummary)) {
-//                        categoryIdComboBox.setSelectedIndex(i);
-//                        break;
-//                    }
-//                }
-//            } else {
-//                outputArea.setText("❌ No category found with ID: " + selectedItem.getId() + " or update failed.");
-//            }
-//        } catch (Exception ex) {
-//            outputArea.setText("❗ Error processing update request: " + ex.getMessage());
-//            ex.printStackTrace();
-//        }
-//    }
+    private void updateUser() {
+        User selectedItem = (User) userIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select a user from the dropdown to update.");
+            return;
+        }
 
-//    private void deleteCategory() {
-//        Category selectedItem = (Category) categoryIdComboBox.getSelectedItem();
-//        if (selectedItem == null) {
-//            outputArea.setText("❗ Please select a category from the dropdown to delete.");
-//            return;
-//        }
-//
-//        try {
-//            boolean success = categoryDAO.deleteById(selectedItem.getId());
-//            if (success) {
-//                outputArea.setText("🗑️ Category deleted (ID: " + selectedItem.getId() + ")");
-//                populateCategoryIdComboBox();
-//                InputFields(true);
-//            } else {
-//                outputArea.setText("❌ No category found with ID: " + selectedItem.getId() + " or delete failed (it might be in use).");
-//            }
-//        } catch (Exception ex) {
-//            outputArea.setText("❗ An error occurred during deletion: " + ex.getMessage());
-//            ex.printStackTrace();
-//        }
-//    }
+        String name = usernameField.getText();
+        if (name.trim().isEmpty()) {
+            outputArea.setText("❗ User name cannot be empty for update.");
+            return;
+        }
+
+        String password = Arrays.toString(passwordField.getPassword());
+        if (password.trim().isEmpty()) {
+            outputArea.setText("❗ Password cannot be empty for update.");
+            return;
+        }
+
+        try {
+            boolean success = userDAO.update(new User(selectedItem.getId(), name, password));
+            if (success) {
+                outputArea.setText("✅ User updated: " + name);
+                populateUserIdComboBox();
+
+                // Attempt to re-select the updated item
+                DefaultComboBoxModel<User> model = (DefaultComboBoxModel<User>) userIdComboBox.getModel();
+                for (int i = 0; i < model.getSize(); i++) {
+                    if (model.getElementAt(i).equals(selectedItem)) {
+                        userIdComboBox.setSelectedIndex(i);
+                        break;
+                    }
+                }
+            } else {
+                outputArea.setText("❌ No User found with ID: " + selectedItem.getId() + " or update failed.");
+            }
+        } catch (Exception ex) {
+            outputArea.setText("❗ Error processing update request: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+
+    private void deleteUser() {
+        User selectedItem = (User) userIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select a user from the dropdown to delete.");
+            return;
+        }
+
+        try {
+            boolean success = userDAO.deleteById(selectedItem.getId());
+            if (success) {
+                outputArea.setText("🗑️ User deleted (ID: " + selectedItem.getId() + ")");
+                populateUserIdComboBox();
+            } else {
+                outputArea.setText("❌ No user found with ID: " + selectedItem.getId() + " or delete failed (it might be in use).");
+            }
+        } catch (Exception ex) {
+            outputArea.setText("❗ An error occurred during deletion: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
 }
