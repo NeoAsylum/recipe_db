@@ -1,0 +1,3276 @@
+# File: src\main\java\recipedb\RecipeApp.java
+package recipedb;
+
+import javax.swing.SwingUtilities;
+
+import recipedb.dao.DatabaseUtil;
+import recipedb.ui.RecipeAppGUI;
+
+public class RecipeApp {
+
+    public static void main(String[] args) {
+        DatabaseUtil.configureConnection("db.properties");
+        SwingUtilities.invokeLater(() -> new RecipeAppGUI().setVisible(true));
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\dao\CategoryDAO.java
+package recipedb.dao;
+
+import recipedb.model.Category;
+
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+public class CategoryDAO implements IdDao<Category> {
+
+    @Override
+    public Category findById(int id) {
+        String sql = "SELECT id, name FROM Category WHERE id = ?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return new Category(rs.getInt("id"), rs.getString("name"));
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return null;
+    }
+
+    @Override
+    public List<Category> findAll() {
+        List<Category> result = new ArrayList<>();
+        String sql = "SELECT id, name FROM Category ORDER BY id";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                Category category = new Category(rs.getInt("id"), rs.getString("name"));
+                result.add(category);
+            }
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return result;
+    }
+
+    @Override
+    public boolean create(Category object) {
+        String sql = "INSERT INTO Category (name) VALUES (?)";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, object.getName());
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return false;
+    }
+
+    @Override
+    public boolean update(Category object) {
+        String sql = "UPDATE Category SET name=? WHERE id=?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, object.getName());
+            stmt.setInt(2, object.getId());
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return false;
+    }
+
+    @Override
+    public boolean deleteById(int id) {
+        String sql = "DELETE FROM Category WHERE id=?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return false;
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\dao\ChangeLogDAO.java
+package recipedb.dao;
+
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Data Access Object for retrieving records from the ChangeLog table.
+ */
+public class ChangeLogDAO {
+
+    /**
+     * Retrieves all change log entries from the database, formatted as readable strings.
+     *
+     * @return A list of strings, where each string represents a formatted log entry.
+     * Returns an empty list if an error occurs or no logs exist.
+     */
+    public List<String> getFormattedChangeLogs() {
+        List<String> formattedLogs = new ArrayList<>();
+        // SQL query to select all columns from the generic ChangeLog table
+        // Ordering by timestamp descending to get the newest logs first
+        String sql = "SELECT id, table_name, record_id, operation_type, old_values, new_values, changed_at, changed_by FROM ChangeLog ORDER BY changed_at DESC";
+
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+        // Using try-with-resources ensures the connection, statement, and result set are closed
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            // Iterate through the result set
+            while (rs.next()) {
+                // Retrieve data from each column of the ChangeLog table
+                int logId = rs.getInt("id");
+                String tableName = rs.getString("table_name");
+                String recordId = rs.getString("record_id");
+                String operationType = rs.getString("operation_type");
+                String oldValues = rs.getString("old_values");
+                String newValues = rs.getString("new_values");
+                Timestamp changedAt = rs.getTimestamp("changed_at");
+                String changedBy = rs.getString("changed_by");
+
+                // Handle potential null values for JSON fields
+                if (oldValues == null) {
+                    oldValues = "N/A";
+                }
+                if (newValues == null) {
+                    newValues = "N/A";
+                }
+
+                // Format the timestamp for display
+                String formattedTimestamp = (changedAt != null) ? sdf.format(changedAt) : "N/A";
+
+                // Format the entire log entry into a detailed, multi-line string for clarity
+                String logEntryString = String.format(
+                        "LOG ID: %d | Table: %s | Operation: %s | Record ID: %s | User: %s | Timestamp: %s\n\tOLD VALUES: %s\n\tNEW VALUES: %s",
+                        logId,
+                        tableName,
+                        operationType.toUpperCase(),
+                        recordId,
+                        changedBy,
+                        formattedTimestamp,
+                        oldValues,
+                        newValues
+                );
+                formattedLogs.add(logEntryString);
+            }
+        } catch (SQLException e) {
+            // Print a more relevant error message for debugging
+            System.err.println("Error fetching formatted change logs: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return formattedLogs; // Return the list of formatted log strings
+    }
+}
+
+================================================================================
+
+# File: src\main\java\recipedb\dao\Dao.java
+package recipedb.dao;
+
+import java.util.List;
+
+public interface Dao<T> {
+    List<T> findAll();
+    boolean create(T object);
+    boolean update(T object);
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\dao\DatabaseUtil.java
+package recipedb.dao;
+
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.util.Properties;
+
+public final class DatabaseUtil {
+
+    private static String url;
+    private static String username;
+    private static String password;
+
+    public static void configureConnection(String propertiesFilePath) {
+        Properties props = new Properties();
+        try (FileInputStream fis = new FileInputStream(propertiesFilePath)) {
+            props.load(fis);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        url = props.getProperty("db.url");
+        username = props.getProperty("db.username");
+        password = props.getProperty("db.password");
+    }
+
+    public static Connection getConnection() {
+        try {
+            return DriverManager.getConnection(url, username, password);
+        } catch (SQLException e) {
+            System.err.println("Connection failed: " + e.getMessage());
+        }
+        return null;
+    }
+
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\dao\IdDao.java
+package recipedb.dao;
+
+public interface IdDao<T> extends Dao<T> {
+    T findById(int id);
+    boolean deleteById(int id);
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\dao\IngredientDAO.java
+package recipedb.dao;
+
+import recipedb.model.Ingredient;
+
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+public class IngredientDAO implements IdDao<Ingredient> {
+
+    // New method to get ID-Name summaries for the JComboBox
+    public List<String> getIngredientIdNameSummaries() {
+        List<String> ingredientSummaries = new ArrayList<>();
+        String sql = "SELECT id, name FROM Ingredient ORDER BY id";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                int id = rs.getInt("id");
+                String name = rs.getString("name");
+                ingredientSummaries.add(String.format("ID: %d - %s", id, name));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return ingredientSummaries;
+    }
+
+    @Override
+    public Ingredient findById(int id) {
+        String sql = "SELECT name, calories, protein, fat, carbohydrates, fiber FROM Ingredient WHERE id = ?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return new Ingredient(
+                        id,
+                        rs.getString("name"),
+                        rs.getInt("calories"),
+                        rs.getFloat("protein"),
+                        rs.getFloat("fat"),
+                        rs.getFloat("carbohydrates"),
+                        rs.getFloat("fiber"));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    @Override
+    public List<Ingredient> findAll() {
+        List<Ingredient> result = new ArrayList<>();
+        String sql = "SELECT * FROM Ingredient ORDER BY id";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                result.add(new Ingredient(
+                    rs.getInt("id"),
+                    rs.getString("name"),
+                    rs.getInt("calories"),
+                    rs.getFloat("protein"),
+                    rs.getFloat("fat"),
+                    rs.getFloat("carbohydrates"),
+                    rs.getFloat("fiber")));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    @Override
+    public boolean create(Ingredient object) {
+        String sql = "INSERT INTO Ingredient (name, calories, protein, fat, carbohydrates, fiber) VALUES (?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            fillStatement(object, stmt);
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public boolean update(Ingredient object) {
+        String sql = "UPDATE Ingredient SET name=?, calories=?, protein=?, fat=?, carbohydrates=?, fiber=? WHERE id=?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            fillStatement(object, stmt);
+            stmt.setInt(7, object.getId());
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public boolean deleteById(int id) {
+        String sql = "DELETE FROM Ingredient WHERE id=?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private void fillStatement(Ingredient object, PreparedStatement stmt) throws SQLException {
+        stmt.setString(1, object.getName());
+        stmt.setInt(2, object.getCalories());
+        stmt.setFloat(3, object.getProtein());
+        stmt.setFloat(4, object.getFat());
+        stmt.setFloat(5, object.getCarbohydrates());
+        stmt.setFloat(6, object.getFiber());
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\dao\MultiKeyDao.java
+package recipedb.dao;
+
+public interface MultiKeyDao<T> extends Dao<T> {
+    T findByKeys(T object);
+    boolean deleteByKeys(T object);
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\dao\RecipeCategoryDAO.java
+package recipedb.dao;
+
+import recipedb.model.RecipeCategory;
+
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+public class RecipeCategoryDAO implements MultiKeyDao<RecipeCategory> {
+
+    @Override
+    public RecipeCategory findByKeys(RecipeCategory object) {
+        String sql = "SELECT COUNT(*) FROM RecipeCategory WHERE recipe_id=? AND category_id=?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, object.getRecipeId());
+            stmt.setInt(2, object.getCategoryId());
+            return stmt.executeUpdate() > 0 ? object : null;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    @Override
+    public boolean deleteByKeys(RecipeCategory object) {
+        String sql = "DELETE FROM RecipeCategory WHERE recipe_id=? AND category_id=?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, object.getRecipeId());
+            stmt.setInt(2, object.getCategoryId());
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public List<RecipeCategory> findAll() {
+        List<RecipeCategory> result = new ArrayList<>();
+        String sql = "SELECT rc.recipe_id, r.name AS RecipeName, rc.category_id, c.name AS CategoryName "
+            + "FROM RecipeCategory rc "
+            + "JOIN Recipe r ON rc.recipe_id = r.id "
+            + "JOIN Category c ON rc.category_id = c.id "
+            + "ORDER BY r.name, c.name";
+
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql); ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                result.add(new RecipeCategory(
+                    rs.getInt("recipe_id"),
+                    rs.getString("RecipeName"),
+                    rs.getInt("category_id"),
+                    rs.getString("CategoryName")
+                ));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    @Override
+    public boolean create(RecipeCategory object) {
+        String sql = "INSERT INTO RecipeCategory (recipe_id, category_id) VALUES (?, ?)";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, object.getRecipeId());
+            stmt.setInt(2, object.getCategoryId());
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            if (e.getSQLState().equals("23000")) {
+                System.err.println("Attempted to insert duplicate RecipeCategory: " +
+                    "RecipeID=" + object.getRecipeId() +
+                    ", CategoryID=" + object.getCategoryId());
+            } else {
+                e.printStackTrace();
+            }
+            return false;
+        }
+    }
+
+    @Override
+    public boolean update(RecipeCategory object) {
+        return false;
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\dao\RecipeDAO.java
+package recipedb.dao;
+
+import recipedb.model.Recipe;
+
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+public class RecipeDAO implements IdDao<Recipe>{
+
+    @Override
+    public Recipe findById(int id) {
+        String sql = "SELECT name, description, instructions, prep_time, cook_time FROM Recipe WHERE id = ?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return new Recipe(
+                        id,
+                        rs.getString("name"),
+                        rs.getString("description"),
+                        rs.getString("instructions"),
+                        rs.getInt("prep_time"),
+                        rs.getInt("cook_time"));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    @Override
+    public List<Recipe> findAll() {
+        List<Recipe> result = new ArrayList<>();
+        String sql = "SELECT * FROM Recipe";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql); ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                result.add(new Recipe(
+                    rs.getInt("id"),
+                    rs.getString("name"),
+                    rs.getString("description"),
+                    rs.getString("instructions"),
+                    rs.getInt("prep_time"),
+                    rs.getInt("cook_time")
+                ));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    @Override
+    public boolean create(Recipe object) {
+        String sql = "INSERT INTO Recipe (name, description, instructions, prep_time, cook_time) VALUES (?, ?, ?, ?, ?)";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, object.getName());
+            stmt.setString(2, object.getDescription());
+            stmt.setString(3, object.getInstructions());
+            stmt.setInt(4, object.getPrepTime());
+            stmt.setInt(5, object.getCookTime());
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public boolean update(Recipe object) {
+        String sql = "UPDATE Recipe SET name=?, description=?, instructions=?, prep_time=?, cook_time=? WHERE id=?";
+        // implement transaction to make each field update in a separate sql query,
+        // bcs right now users have to fill out each field to not set them to null which is annoying
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, object.getName());
+            stmt.setString(2, object.getDescription());
+            stmt.setString(3, object.getInstructions());
+            stmt.setInt(4, object.getPrepTime());
+            stmt.setInt(5, object.getCookTime());
+            stmt.setInt(6, object.getId());
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public boolean deleteById(int id) {
+        String sql = "DELETE FROM Recipe WHERE id=?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    public List<Double> getRecipeNutrition(int recipeId) {
+        List<Double> result = new ArrayList<>();
+        String sql = "{CALL sp_TotalRecipeNutrition(?)}";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)){
+            stmt.setInt(1, recipeId);
+            ResultSet resultSet = stmt.executeQuery();
+
+            if (resultSet.next()) {
+                result.add(resultSet.getDouble(1)); // Calories
+                result.add(resultSet.getDouble(2)); // Protein
+                result.add(resultSet.getDouble(3)); // Fat
+                result.add(resultSet.getDouble(4)); // Carbohydrates
+                result.add(resultSet.getDouble(5)); // Fiber
+            }
+
+            return result;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return result;
+        }
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\dao\RecipeIngredientDAO.java
+package recipedb.dao;
+
+import recipedb.model.RecipeIngredient;
+
+import java.sql.CallableStatement;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+public class RecipeIngredientDAO implements MultiKeyDao<RecipeIngredient> {
+
+    @Override
+    public RecipeIngredient findByKeys(RecipeIngredient object) {
+        String sql =
+            "SELECT ri.recipe_id, r.name AS RecipeName, "
+                +"ri.ingredient_id, i.name AS IngredientName, ri.quantity "
+                + "FROM RecipeIngredient ri "
+                + "JOIN Recipe r ON ri.recipe_id = r.id "
+                + "JOIN Ingredient i ON ri.ingredient_id = i.id "
+                + "WHERE ri.recipe_id = ? AND ri.ingredient_id = ?"
+                + "ORDER BY r.name";
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             stmt.setInt(1, object.getRecipeId());
+             stmt.setInt(2, object.getIngredientId());
+             try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return new RecipeIngredient(
+                        rs.getInt("recipe_id"),
+                        rs.getString("RecipeName"),
+                        rs.getInt("ingredient_id"),
+                        rs.getString("IngredientName"),
+                        rs.getString("quantity")
+                    );
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    @Override
+    public boolean deleteByKeys(RecipeIngredient object) {
+        String sql = "DELETE FROM RecipeIngredient WHERE recipe_id=? AND ingredient_id=?";
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, object.getRecipeId());
+            stmt.setInt(2, object.getIngredientId());
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public List<RecipeIngredient> findAll() {
+        List<RecipeIngredient> result = new ArrayList<>();
+        String sql = "{CALL sp_RecipeIngredient_FindAll()}";
+
+        try (Connection conn = DatabaseUtil.getConnection();
+             CallableStatement cstmt = conn.prepareCall(sql);
+             ResultSet rs = cstmt.executeQuery()) {
+            while (rs.next()) {
+                result.add(new RecipeIngredient(
+                    rs.getInt("recipe_id"),
+                    rs.getString("RecipeName"),
+                    rs.getInt("ingredient_id"),
+                    rs.getString("IngredientName"),
+                    rs.getString("quantity")
+                ));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return result;
+    }
+
+    @Override
+    public boolean create(RecipeIngredient object) {
+        String sql = "INSERT INTO RecipeIngredient (recipe_id, ingredient_id, quantity) VALUES (?, ?, ?)";
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setInt(1, object.getRecipeId());
+            stmt.setInt(2, object.getIngredientId());
+            stmt.setString(3, object.getQuantity());
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public boolean update(RecipeIngredient object) {
+        String sql = "UPDATE RecipeIngredient SET quantity=? WHERE recipe_id=? AND ingredient_id=?";
+        try (Connection conn = DatabaseUtil.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, object.getQuantity());
+            stmt.setInt(2, object.getRecipeId());
+            stmt.setInt(3, object.getIngredientId());
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\dao\UserDAO.java
+package recipedb.dao;
+
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+
+import recipedb.model.Category;
+import recipedb.model.User;
+
+public class UserDAO implements IdDao<User> {
+
+	@Override
+    public User findById(int id) {
+        String sql = "SELECT id, username, password FROM User WHERE id = ?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return new User(rs.getInt("id"), rs.getString("username"), rs.getString("password"));
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return null;
+    }
+
+	
+    public User findByUsername(String username) {
+        String sql = "SELECT id, username, password FROM User WHERE username = ?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, username);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return new User(rs.getInt("id"), rs.getString("username"), rs.getString("password"));
+                }
+            }
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return null;
+    }
+    
+    @Override
+    public List<User> findAll() {
+        List<User> result = new ArrayList<>();
+        String sql = "SELECT id, username, password FROM User ORDER BY id";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                User user = new User(rs.getInt("id"), rs.getString("username"), rs.getString("password"));
+                result.add(user);
+            }
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return result;
+    }
+
+    @Override
+    public boolean create(User object) {
+        String sql = "INSERT INTO User (username, password) VALUES (?,?)";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, object.getUserName());
+            stmt.setString(2, object.getPassword());
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return false;
+    }
+
+    @Override
+    public boolean update(User object) {
+        String sql = "UPDATE User SET username=? WHERE id=?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setString(1, object.getUserName());
+            stmt.setInt(2, object.getId());
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return false;
+    }
+
+    @Override
+    public boolean deleteById(int id) {
+        String sql = "DELETE FROM User WHERE id=?";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
+            stmt.setInt(1, id);
+            int rowsAffected = stmt.executeUpdate();
+            return rowsAffected > 0;
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return false;
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\model\Category.java
+package recipedb.model;
+
+public class Category {
+    private int id;
+    private String name;
+
+    public Category(int id, String name) {
+        this.id = id;
+        this.name = name;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    @Override
+    public String toString() {
+        return "ID: " + id + " | " + name;
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\model\Ingredient.java
+package recipedb.model;
+
+public class Ingredient {
+    private int id;
+    private String name;
+    private int calories;
+    private float protein;
+    private float fat;
+    private float carbohydrates;
+    private float fiber;
+
+    public Ingredient(int id, String name, int calories, float protein, float fat, float carbohydrates, float fiber) {
+        this.id = id;
+        this.name = name;
+        this.calories = calories;
+        this.protein = protein;
+        this.fat = fat;
+        this.carbohydrates = carbohydrates;
+        this.fiber = fiber;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public int getCalories() {
+        return calories;
+    }
+
+    public void setCalories(int calories) {
+        this.calories = calories;
+    }
+
+    public float getProtein() {
+        return protein;
+    }
+
+    public void setProtein(float protein) {
+        this.protein = protein;
+    }
+
+    public float getFat() {
+        return fat;
+    }
+
+    public void setFat(float fat) {
+        this.fat = fat;
+    }
+
+    public float getCarbohydrates() {
+        return carbohydrates;
+    }
+
+    public void setCarbohydrates(float carbohydrates) {
+        this.carbohydrates = carbohydrates;
+    }
+
+    public float getFiber() {
+        return fiber;
+    }
+
+    public void setFiber(float fiber) {
+        this.fiber = fiber;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("ID: %d | %s", id, name);
+    }
+
+    public String toDetailedString() {
+        return String.format("ID: %d | Name: %s | Calories: %d | Protein: %.2fg | Fat: %.2fg | Carbs: %.2fg | Fiber: %.2fg",
+            id, name, calories, protein, fat, carbohydrates, fiber);
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\model\Recipe.java
+package recipedb.model;
+
+public class Recipe {
+    private int id;
+    private String name;
+    private String description;
+    private String instructions;
+    private int prepTime;
+    private int cookTime;
+
+    public Recipe(int id, String name, String description, String instructions, int prepTime, int cookTime) {
+        this.id = id;
+        this.name = name;
+        this.description = description;
+        this.instructions = instructions;
+        this.prepTime = prepTime;
+        this.cookTime = cookTime;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public String getInstructions() {
+        return instructions;
+    }
+
+    public void setInstructions(String instructions) {
+        this.instructions = instructions;
+    }
+
+    public int getPrepTime() {
+        return prepTime;
+    }
+
+    public void setPrepTime(int prepTime) {
+        this.prepTime = prepTime;
+    }
+
+    public int getCookTime() {
+        return cookTime;
+    }
+
+    public void setCookTime(int cookTime) {
+        this.cookTime = cookTime;
+    }
+
+    @Override
+    public String toString() {
+        return String.format(
+            "ID: %d | %s",
+            id, name
+        );
+    }
+
+    public String toDetailedString() {
+        return String.format(
+            "ID: %d | Name: %s | Description: %s | Instructions: %s | Prep Time: %d min | Cook Time: %d min",
+            id, name, description, instructions, prepTime, cookTime
+        );
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\model\RecipeCategory.java
+package recipedb.model;
+
+public class RecipeCategory {
+    private int recipeId;
+    private int categoryId;
+    private String recipeName;
+    private String categoryName;
+
+    public RecipeCategory(int recipeId, int categoryId) {
+        this.recipeId = recipeId;
+        this.categoryId = categoryId;
+    }
+
+    public RecipeCategory(int recipeId, String recipeName, int categoryId, String categoryName) {
+        this.recipeId = recipeId;
+        this.recipeName = recipeName;
+        this.categoryId = categoryId;
+        this.categoryName = categoryName;
+    }
+
+    public int getRecipeId() {
+        return recipeId;
+    }
+
+    public void setRecipeId(int recipeId) {
+        this.recipeId = recipeId;
+    }
+
+    public int getCategoryId() {
+        return categoryId;
+    }
+
+    public void setCategoryId(int categoryId) {
+        this.categoryId = categoryId;
+    }
+
+    public String getRecipeName() {
+        return recipeName;
+    }
+
+    public void setRecipeName(String recipeName) {
+        this.recipeName = recipeName;
+    }
+
+    public String getCategoryName() {
+        return categoryName;
+    }
+
+    public void setCategoryName(String categoryName) {
+        this.categoryName = categoryName;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("RecID: %d (%s) --- CatID: %d (%s)",
+            recipeId, recipeName, categoryId, categoryName);
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\model\RecipeIngredient.java
+package recipedb.model;
+
+public class RecipeIngredient {
+    private int recipeId;
+    private int ingredientId;
+    private String quantity;
+    private String recipeName;
+    private String ingredientName;
+
+    public RecipeIngredient(int recipeId, int ingredientId, String quantity) {
+        this.recipeId = recipeId;
+        this.ingredientId = ingredientId;
+        this.quantity = quantity;
+    }
+
+    public RecipeIngredient(int recipeId, String recipeName, int ingredientId, String ingredientName, String quantity) {
+        this.recipeId = recipeId;
+        this.recipeName = recipeName;
+        this.ingredientId = ingredientId;
+        this.ingredientName = ingredientName;
+        this.quantity = quantity;
+    }
+
+    public int getRecipeId() {
+        return recipeId;
+    }
+
+    public void setRecipeId(int recipeId) {
+        this.recipeId = recipeId;
+    }
+
+    public int getIngredientId() {
+        return ingredientId;
+    }
+
+    public void setIngredientId(int ingredientId) {
+        this.ingredientId = ingredientId;
+    }
+
+    public String getQuantity() {
+        return quantity;
+    }
+
+    public void setQuantity(String quantity) {
+        this.quantity = quantity;
+    }
+
+    public String getRecipeName() {
+        return recipeName;
+    }
+
+    public void setRecipeName(String recipeName) {
+        this.recipeName = recipeName;
+    }
+
+    public String getIngredientName() {
+        return ingredientName;
+    }
+
+    public void setIngredientName(String ingredientName) {
+        this.ingredientName = ingredientName;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("Recipe: %s (RID:%d) --- Ing: %s (IID:%d)",
+            recipeName, recipeId, ingredientName, ingredientId);
+    }
+
+    public String toDetailedString() {
+        return String.format("Recipe: %s (RID:%d) --- Ing: %s (IID:%d) --- Qty: %s",
+            recipeName, recipeId, ingredientName, ingredientId, quantity);
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\model\User.java
+package recipedb.model;
+
+public class User {
+	private int id;
+    private String username;
+    private String password;
+
+    public User(int id, String username, String password) {
+        this.id = id;
+        this.username = username;
+        this.password = password;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public String getUserName() {
+        return username;
+    }    
+
+    public void setName(String username) {
+        this.username = username;
+    }
+    
+    public String getPassword() {
+        return password;
+    }
+    
+    public void setPassword(String password) {
+		this.password = password;
+	}
+
+    @Override
+    public String toString() {
+        return "ID: " + id + " | " + username;
+    }
+
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\ui\CategoryPanel.java
+package recipedb.ui;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridLayout;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import javax.swing.BorderFactory;
+import javax.swing.DefaultComboBoxModel;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
+
+import recipedb.dao.CategoryDAO;
+import recipedb.model.Category;
+
+public class CategoryPanel extends JPanel {
+
+    private final CategoryDAO categoryDAO;
+    private JTextField categoryNameField;
+    private JTextArea outputArea;
+    private JComboBox<Category> categoryIdComboBox; // JComboBox for category selection
+    private boolean isPopulatingComboBox = false; // Flag to prevent event recursion
+
+    public CategoryPanel() {
+        setLayout(new BorderLayout());
+        categoryDAO = new CategoryDAO();
+        createUI();
+    }
+
+    private void createUI() {
+        JPanel inputPanel = new JPanel(new GridLayout(2, 2, 10, 10)); // Only 2 rows needed now
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        inputPanel.add(new JLabel("Select Category:")); // Changed label
+        categoryIdComboBox = new JComboBox<>(); // Initialize JComboBox
+        inputPanel.add(categoryIdComboBox);
+
+        inputPanel.add(new JLabel("Category Name:"));
+        categoryNameField = new JTextField(20);
+        inputPanel.add(categoryNameField);
+
+        add(inputPanel, BorderLayout.NORTH);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        JButton createBtn = new JButton("Create");
+        createBtn.setPreferredSize(new Dimension(80, 30));
+        JButton readBtn = new JButton("Read All"); // Changed label for clarity
+        readBtn.setPreferredSize(new Dimension(100, 30));
+        JButton updateBtn = new JButton("Update");
+        updateBtn.setPreferredSize(new Dimension(80, 30));
+        JButton deleteBtn = new JButton("Delete");
+        deleteBtn.setPreferredSize(new Dimension(80, 30));
+
+        buttonPanel.add(createBtn);
+        buttonPanel.add(readBtn);
+        buttonPanel.add(updateBtn);
+        buttonPanel.add(deleteBtn);
+        add(buttonPanel, BorderLayout.CENTER);
+
+        outputArea = new JTextArea(10, 50);
+        outputArea.setEditable(false);
+        outputArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
+        outputArea.setBackground(new Color(40, 40, 40));
+        outputArea.setForeground(Color.WHITE);
+        outputArea.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        add(new JScrollPane(outputArea), BorderLayout.SOUTH);
+
+        // Populate JComboBox when it's about to become visible
+        categoryIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override
+            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+                populateCategoryIdComboBox();
+            }
+
+            @Override
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+            }
+
+            @Override
+            public void popupMenuCanceled(PopupMenuEvent e) {
+            }
+        });
+
+        // Load details when an item is selected
+        categoryIdComboBox.addActionListener(e -> {
+            if (!isPopulatingComboBox && categoryIdComboBox.getSelectedItem() != null) {
+                loadSelectedCategoryDetails();
+            }
+        });
+
+        createBtn.addActionListener(e -> createCategory());
+        readBtn.addActionListener(e -> readCategories());
+        updateBtn.addActionListener(e -> updateCategory());
+        deleteBtn.addActionListener(e -> deleteCategory());
+
+        // Initial population
+        populateCategoryIdComboBox();
+    }
+
+    private void populateCategoryIdComboBox() {
+        isPopulatingComboBox = true;
+        Category selectedItemBeforeUpdate = (Category) categoryIdComboBox.getSelectedItem();
+        categoryIdComboBox.removeAllItems();
+
+        List<Category> categorySummaries = categoryDAO.findAll();
+        if (categorySummaries.isEmpty()) {
+            outputArea.append("\nNo categories available to select.");
+        } else {
+            for (Category summary : categorySummaries) {
+                categoryIdComboBox.addItem(summary);
+            }
+            if (selectedItemBeforeUpdate != null && categorySummaries.contains(selectedItemBeforeUpdate)) {
+                categoryIdComboBox.setSelectedItem(selectedItemBeforeUpdate);
+            } else if (!categorySummaries.isEmpty()) {
+                categoryIdComboBox.setSelectedIndex(-1);
+            }
+        }
+        if (categoryIdComboBox.getSelectedIndex() == -1) {
+            clearInputFields(false);
+        }
+        isPopulatingComboBox = false;
+    }
+
+    private void loadSelectedCategoryDetails() {
+        Category selectedItem = (Category) categoryIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            clearInputFields(false); // Only clear name field
+            return;
+        }
+
+        Category category = categoryDAO.findById(selectedItem.getId());
+        if (category != null) {
+            categoryNameField.setText(category.getName());
+        } else {
+            outputArea.setText("❌ Error: Could not load details for Category ID: " + selectedItem.getId());
+            clearInputFields(false);
+        }
+    }
+
+    private void clearInputFields(boolean clearComboBoxAlso) {
+        if (clearComboBoxAlso) {
+            categoryIdComboBox.setSelectedIndex(-1);
+        }
+        categoryNameField.setText("");
+    }
+
+    private void createCategory() {
+        String name = categoryNameField.getText();
+        if (name.trim().isEmpty()) {
+            outputArea.setText("❗ Category name cannot be empty.");
+            return;
+        }
+        try {
+            Category category = new Category(-1, name);
+            boolean success = categoryDAO.create(category);
+            if (success) {
+                outputArea.setText("✅ Category created: " + name);
+                populateCategoryIdComboBox();
+                clearInputFields(true);
+            } else {
+                outputArea.setText("❌ Failed to create category. It might already exist or another error occurred.");
+            }
+        } catch (Exception ex) {
+            outputArea.setText("❗ Error processing request: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+
+    private void readCategories() {
+        // Uses the DAO's getCategories which returns "ID: id | Name: name"
+        List<Category> categories = categoryDAO.findAll();
+        outputArea.setText("📂 Categories:\n" + categories.stream().map(Category::toString).collect(Collectors.joining("\n")));
+    }
+
+    private void updateCategory() {
+        Category selectedItem = (Category) categoryIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select a category from the dropdown to update.");
+            return;
+        }
+
+        String name = categoryNameField.getText();
+        if (name.trim().isEmpty()) {
+            outputArea.setText("❗ Category name cannot be empty for update.");
+            return;
+        }
+
+        try {
+            boolean success = categoryDAO.update(new Category(selectedItem.getId(), name));
+            if (success) {
+                outputArea.setText("✅ Category updated: " + name);
+                populateCategoryIdComboBox();
+
+                // Attempt to re-select the updated item
+                String potentiallyUpdatedItemSummary = String.format("ID: %d - %s", selectedItem.getId(), name);
+                DefaultComboBoxModel<Category> model = (DefaultComboBoxModel<Category>) categoryIdComboBox.getModel();
+                for (int i = 0; i < model.getSize(); i++) {
+                    if (model.getElementAt(i).equals(potentiallyUpdatedItemSummary)) {
+                        categoryIdComboBox.setSelectedIndex(i);
+                        break;
+                    }
+                }
+            } else {
+                outputArea.setText("❌ No category found with ID: " + selectedItem.getId() + " or update failed.");
+            }
+        } catch (Exception ex) {
+            outputArea.setText("❗ Error processing update request: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+
+    private void deleteCategory() {
+        Category selectedItem = (Category) categoryIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select a category from the dropdown to delete.");
+            return;
+        }
+
+        try {
+            boolean success = categoryDAO.deleteById(selectedItem.getId());
+            if (success) {
+                outputArea.setText("🗑️ Category deleted (ID: " + selectedItem.getId() + ")");
+                populateCategoryIdComboBox();
+                clearInputFields(true);
+            } else {
+                outputArea.setText("❌ No category found with ID: " + selectedItem.getId() + " or delete failed (it might be in use).");
+            }
+        } catch (Exception ex) {
+            outputArea.setText("❗ An error occurred during deletion: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\ui\ChangeLogPanel.java
+package recipedb.ui;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.util.List;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.SwingConstants;
+
+import recipedb.dao.ChangeLogDAO; // UPDATED import
+
+/**
+ * A UI panel that displays all database change logs from the ChangeLog table.
+ */
+public class ChangeLogPanel extends JPanel {
+
+    private ChangeLogDAO logDAO; // UPDATED to use the generic ChangeLogDAO
+    private JTextArea logDisplayArea;
+    private JButton refreshButton;
+
+    public ChangeLogPanel() {
+        this.logDAO = new ChangeLogDAO(); // UPDATED instantiation
+        setLayout(new BorderLayout(10, 10));
+        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        createUI();
+    }
+
+    private void createUI() {
+        // Title Label - UPDATED to be more generic
+        JLabel titleLabel = new JLabel("Database Change Logs", SwingConstants.CENTER);
+        titleLabel.setFont(new Font("Arial", Font.BOLD, 18));
+        add(titleLabel, BorderLayout.NORTH);
+
+        // Log Display Area
+        logDisplayArea = new JTextArea(15, 60);
+        logDisplayArea.setEditable(false);
+        logDisplayArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
+        logDisplayArea.setBackground(new Color(245, 245, 245));
+        logDisplayArea.setForeground(new Color(50, 50, 50));
+        logDisplayArea.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.GRAY),
+                BorderFactory.createEmptyBorder(5, 5, 5, 5)
+        ));
+        // Note: Line wrapping is less ideal for the new multi-line format, but kept for consistency.
+        // You might want to consider horizontal scrolling instead for very long JSON strings.
+        logDisplayArea.setLineWrap(true);
+        logDisplayArea.setWrapStyleWord(true);
+
+        JScrollPane scrollPane = new JScrollPane(logDisplayArea);
+        add(scrollPane, BorderLayout.CENTER);
+
+        // Button Panel
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        refreshButton = new JButton("View/Refresh Logs");
+        refreshButton.setFont(new Font("Arial", Font.PLAIN, 14));
+        refreshButton.setPreferredSize(new Dimension(180, 35));
+
+        // Styling the button
+        refreshButton.setBackground(new Color(70, 130, 180));
+        refreshButton.setForeground(Color.WHITE);
+        refreshButton.setFocusPainted(false);
+        refreshButton.setBorder(BorderFactory.createEmptyBorder(5, 15, 5, 15));
+
+        buttonPanel.add(refreshButton);
+        add(buttonPanel, BorderLayout.SOUTH);
+
+        // Action Listener for the button
+        refreshButton.addActionListener(e -> displayLogs());
+    }
+
+    private void displayLogs() {
+        // UPDATED to call the new method from ChangeLogDAO
+        List<String> logs = logDAO.getFormattedChangeLogs();
+        logDisplayArea.setText(""); // Clear previous logs
+
+        if (logs.isEmpty()) {
+            logDisplayArea.setForeground(Color.RED);
+            // UPDATED message for when no logs are found
+            logDisplayArea.setText("\n   No change logs found.");
+        } else {
+            logDisplayArea.setForeground(new Color(50, 50, 50));
+            for (String logEntry : logs) {
+                // The new format includes newline characters, so we add another for spacing
+                logDisplayArea.append(logEntry + "\n\n");
+            }
+            // Scroll to the top after loading logs
+            logDisplayArea.setCaretPosition(0);
+        }
+    }
+
+    /**
+     * Public method to allow external refreshing of logs if needed.
+     */
+    public void refreshLogView() {
+        displayLogs();
+    }
+}
+
+================================================================================
+
+# File: src\main\java\recipedb\ui\IngredientsPanel.java
+package recipedb.ui;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridLayout;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import javax.swing.BorderFactory;
+import javax.swing.DefaultComboBoxModel;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
+
+import recipedb.dao.IngredientDAO;
+import recipedb.model.Ingredient;
+
+public class IngredientsPanel extends JPanel {
+
+    private final IngredientDAO ingredientDAO;
+    // private JTextField ingredientIdField;
+    private JTextField ingredientNameField, caloriesField, proteinField, fatField, carbField, fiberField;
+    private JTextArea outputArea;
+    private JComboBox<String> ingredientIdComboBox; // JComboBox for ingredient selection
+    private boolean isPopulatingComboBox = false; // Flag to prevent event recursion
+
+    public IngredientsPanel() {
+        setLayout(new BorderLayout());
+        ingredientDAO = new IngredientDAO();
+        createUI();
+    }
+
+    private void createUI() {
+        JPanel inputPanel = new JPanel(new GridLayout(7, 2, 10, 10));
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        inputPanel.add(new JLabel("Select Ingredient:")); // Changed label
+        ingredientIdComboBox = new JComboBox<>(); // Initialize JComboBox
+        inputPanel.add(ingredientIdComboBox);
+
+        inputPanel.add(new JLabel("Ingredient Name:"));
+        ingredientNameField = new JTextField(20);
+        inputPanel.add(ingredientNameField);
+
+        inputPanel.add(new JLabel("Calories:"));
+        caloriesField = new JTextField(20);
+        inputPanel.add(caloriesField);
+
+        inputPanel.add(new JLabel("Protein (g):"));
+        proteinField = new JTextField(20);
+        inputPanel.add(proteinField);
+
+        inputPanel.add(new JLabel("Fat (g):"));
+        fatField = new JTextField(20);
+        inputPanel.add(fatField);
+
+        inputPanel.add(new JLabel("Carbohydrates (g):"));
+        carbField = new JTextField(20);
+        inputPanel.add(carbField);
+
+        inputPanel.add(new JLabel("Fiber (g):"));
+        fiberField = new JTextField(20);
+        inputPanel.add(fiberField);
+
+        add(inputPanel, BorderLayout.NORTH);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        JButton createBtn = new JButton("Create");
+        createBtn.setPreferredSize(new Dimension(80, 30));
+        JButton readBtn = new JButton("Read All"); // Changed label for clarity
+        readBtn.setPreferredSize(new Dimension(100, 30));
+        JButton updateBtn = new JButton("Update");
+        updateBtn.setPreferredSize(new Dimension(80, 30));
+        JButton deleteBtn = new JButton("Delete");
+        deleteBtn.setPreferredSize(new Dimension(80, 30));
+
+        buttonPanel.add(createBtn);
+        buttonPanel.add(readBtn);
+        buttonPanel.add(updateBtn);
+        buttonPanel.add(deleteBtn);
+        add(buttonPanel, BorderLayout.CENTER);
+
+        outputArea = new JTextArea(10, 50);
+        outputArea.setEditable(false);
+        outputArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
+        outputArea.setBackground(new Color(40, 40, 40));
+        outputArea.setForeground(Color.WHITE);
+        outputArea.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        add(new JScrollPane(outputArea), BorderLayout.SOUTH);
+
+        // Populate JComboBox when it's about to become visible
+        ingredientIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override
+            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+                populateIngredientIdComboBox();
+            }
+
+            @Override
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+            }
+
+            @Override
+            public void popupMenuCanceled(PopupMenuEvent e) {
+            }
+        });
+
+        // Load details when an item is selected
+        ingredientIdComboBox.addActionListener(e -> {
+            if (!isPopulatingComboBox && ingredientIdComboBox.getSelectedItem() != null) {
+                loadSelectedIngredientDetails();
+            }
+        });
+
+        createBtn.addActionListener(e -> createIngredient());
+        readBtn.addActionListener(e -> readIngredients());
+        updateBtn.addActionListener(e -> updateIngredient());
+        deleteBtn.addActionListener(e -> deleteIngredient());
+
+        // Initial population
+        populateIngredientIdComboBox();
+    }
+
+    private void populateIngredientIdComboBox() {
+        isPopulatingComboBox = true;
+        String selectedItemBeforeUpdate = (String) ingredientIdComboBox.getSelectedItem();
+        ingredientIdComboBox.removeAllItems(); // Important to call before adding new items
+
+        List<String> ingredientSummaries = ingredientDAO.getIngredientIdNameSummaries();
+        if (ingredientSummaries.isEmpty()) {
+            outputArea.append("\nNo ingredients available to select.");
+        } else {
+            for (String summary : ingredientSummaries) {
+                ingredientIdComboBox.addItem(summary);
+            }
+            if (selectedItemBeforeUpdate != null && ingredientSummaries.contains(selectedItemBeforeUpdate)) {
+                ingredientIdComboBox.setSelectedItem(selectedItemBeforeUpdate);
+            } else if (!ingredientSummaries.isEmpty()) {
+                ingredientIdComboBox.setSelectedIndex(-1); // Default to no selection or first item
+            }
+        }
+        if (ingredientIdComboBox.getSelectedIndex() == -1) {
+            clearInputFields(false);
+        }
+        isPopulatingComboBox = false;
+    }
+
+    private int parseIdFromSelectedItem(String selectedItem) {
+        if (selectedItem == null || !selectedItem.startsWith("ID: ")) {
+            return -1;
+        }
+        try {
+            String idStr = selectedItem.substring(4, selectedItem.indexOf(" - "));
+            return Integer.parseInt(idStr.trim());
+        } catch (Exception e) {
+            outputArea.setText("❗ Error parsing ID from selected item: " + selectedItem);
+            e.printStackTrace();
+            return -1;
+        }
+    }
+
+    private void loadSelectedIngredientDetails() {
+        String selectedItem = (String) ingredientIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            clearInputFields(false);
+            return;
+        }
+        int ingredientId = parseIdFromSelectedItem(selectedItem);
+        if (ingredientId == -1) {
+            clearInputFields(false);
+            return;
+        }
+
+        Ingredient details = ingredientDAO.findById(ingredientId);
+        if (details != null) {
+            ingredientNameField.setText(details.getName());
+            caloriesField.setText(String.valueOf(details.getCalories()));
+            proteinField.setText(String.valueOf(details.getProtein()));
+            fatField.setText(String.valueOf(details.getFat()));
+            carbField.setText(String.valueOf(details.getCarbohydrates()));
+            fiberField.setText(String.valueOf(details.getFiber()));
+        } else {
+            outputArea.setText("❌ Error: Could not load details for Ingredient ID: " + ingredientId);
+            clearInputFields(false);
+        }
+    }
+
+    private void clearInputFields(boolean clearComboBoxAlso) {
+        if (clearComboBoxAlso) {
+            ingredientIdComboBox.setSelectedIndex(-1);
+        }
+        ingredientNameField.setText("");
+        caloriesField.setText("");
+        proteinField.setText("");
+        fatField.setText("");
+        carbField.setText("");
+        fiberField.setText("");
+    }
+
+    private void createIngredient() {
+        try {
+            String name = ingredientNameField.getText();
+            if (name.trim().isEmpty()) {
+                outputArea.setText("❗ Ingredient name cannot be empty.");
+                return;
+            }
+            // Add similar checks for other fields if they cannot be empty or need specific formats
+            int calories = Integer.parseInt(caloriesField.getText());
+            float protein = Float.parseFloat(proteinField.getText());
+            float fat = Float.parseFloat(fatField.getText());
+            float carbohydrates = Float.parseFloat(carbField.getText());
+            float fiber = Float.parseFloat(fiberField.getText());
+
+            boolean success = ingredientDAO.create(new Ingredient(-1, name, calories, protein, fat, carbohydrates, fiber));
+            if (success) {
+                outputArea.setText("✅ Ingredient created: " + name);
+                populateIngredientIdComboBox();
+                clearInputFields(true);
+            } else {
+                outputArea.setText("❌ Failed to create ingredient.");
+            }
+        } catch (NumberFormatException ex) {
+            outputArea.setText("❗ Invalid input format! Please enter valid numbers for nutritional values.");
+        }
+    }
+
+    private void readIngredients() {
+        List<Ingredient> ingredients = ingredientDAO.findAll();
+        outputArea.setText("📂 Ingredients:\n" + ingredients.stream().map(Ingredient::toDetailedString).collect(Collectors.joining("\n")));
+    }
+
+    private void updateIngredient() {
+        String selectedItem = (String) ingredientIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select an ingredient from the dropdown to update.");
+            return;
+        }
+        int id = parseIdFromSelectedItem(selectedItem);
+        if (id == -1) {
+            return;
+        }
+
+        try {
+            String name = ingredientNameField.getText();
+            if (name.trim().isEmpty()) {
+                outputArea.setText("❗ Ingredient name cannot be empty for update.");
+                return;
+            }
+            int calories = Integer.parseInt(caloriesField.getText());
+            float protein = Float.parseFloat(proteinField.getText());
+            float fat = Float.parseFloat(fatField.getText());
+            float carbohydrates = Float.parseFloat(carbField.getText());
+            float fiber = Float.parseFloat(fiberField.getText());
+
+            boolean success = ingredientDAO.update(new Ingredient(id, name, calories, protein, fat, carbohydrates, fiber));
+            if (success) {
+                outputArea.setText("✅ Ingredient updated: " + name);
+                populateIngredientIdComboBox();
+
+                // Attempt to re-select the updated item
+                String potentiallyUpdatedItemSummary = String.format("ID: %d - %s", id, name);
+                DefaultComboBoxModel<String> model = (DefaultComboBoxModel<String>) ingredientIdComboBox.getModel();
+                for (int i = 0; i < model.getSize(); i++) {
+                    if (model.getElementAt(i).equals(potentiallyUpdatedItemSummary)) {
+                        ingredientIdComboBox.setSelectedIndex(i);
+                        break;
+                    }
+                }
+            } else {
+                outputArea.setText("❌ No ingredient found with ID: " + id + " or update failed.");
+            }
+        } catch (NumberFormatException ex) {
+            outputArea.setText("❗ Invalid input format! Please enter valid numbers for nutritional values.");
+        }
+    }
+
+    private void deleteIngredient() {
+        String selectedItem = (String) ingredientIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select an ingredient from the dropdown to delete.");
+            return;
+        }
+        int id = parseIdFromSelectedItem(selectedItem);
+        if (id == -1) {
+            return;
+        }
+
+        try {
+            boolean success = ingredientDAO.deleteById(id);
+            if (success) {
+                outputArea.setText("🗑️ Ingredient deleted (ID: " + id + ")");
+                populateIngredientIdComboBox();
+                clearInputFields(true);
+            } else {
+                outputArea.setText("❌ No ingredient found with ID: " + id + " or delete failed.");
+            }
+        } catch (Exception ex) {
+            outputArea.setText("❗ An error occurred during deletion.");
+            ex.printStackTrace();
+        }
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\ui\RecipeAppGUI.java
+package recipedb.ui;
+
+import java.awt.BorderLayout;
+
+import javax.swing.JFrame;
+import javax.swing.JRootPane;
+import javax.swing.JTabbedPane;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+import javax.swing.UnsupportedLookAndFeelException;
+
+public class RecipeAppGUI extends JFrame {
+
+    public RecipeAppGUI() {
+        setTitle("Recipe Database App");
+        setSize(1200, 800);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+        setUndecorated(true);
+        getRootPane().setWindowDecorationStyle(JRootPane.FRAME);
+
+        // Set Modern Look & Feel
+        try {
+            UIManager.setLookAndFeel(new com.formdev.flatlaf.FlatDarkLaf());
+
+        } catch (UnsupportedLookAndFeelException ex) {
+            System.err.println("Failed to initialize LaF");
+        }
+
+        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane.addTab("Recipes", new RecipePanel());
+        tabbedPane.addTab("Recipe Categories", new RecipeCategoryPanel());
+        tabbedPane.addTab("Ingredients", new IngredientsPanel());
+        tabbedPane.addTab("Categories", new CategoryPanel());
+        tabbedPane.addTab("Recipe Ingredients", new RecipeIngredientPanel());
+        tabbedPane.addTab("Deletion Log", new ChangeLogPanel());
+        tabbedPane.addTab("User", new UserPanel());
+
+        SwingUtilities.updateComponentTreeUI(this);
+
+        add(tabbedPane, BorderLayout.CENTER);
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\ui\RecipeCategoryPanel.java
+package recipedb.ui;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridLayout;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
+
+import recipedb.dao.CategoryDAO;
+import recipedb.dao.RecipeCategoryDAO;
+import recipedb.dao.RecipeDAO;
+import recipedb.model.Category;
+import recipedb.model.Recipe;
+import recipedb.model.RecipeCategory;
+
+public class RecipeCategoryPanel extends JPanel {
+
+    private final RecipeCategoryDAO recipeCategoryDAO;
+    private final RecipeDAO recipeDAO;
+    private final CategoryDAO categoryDAO;
+
+    private JComboBox<RecipeCategory> existingAssociationComboBox; // Master dropdown for existing links
+    private JComboBox<Recipe> targetRecipeIdComboBox;      // For selecting/displaying recipe part of association
+    private JComboBox<Category> targetCategoryIdComboBox;    // For selecting/displaying category part of association
+
+    private JTextArea outputArea;
+    private boolean isPopulatingExistingAssociationComboBox = false;
+    private boolean isPopulatingTargetRecipeComboBox = false;
+    private boolean isPopulatingTargetCategoryComboBox = false;
+
+    // To store the original IDs of the currently selected association for an update operation
+    private int currentSelectedAssociationRecipeId = -1;
+    private int currentSelectedAssociationCategoryId = -1;
+
+
+    public RecipeCategoryPanel() {
+        setLayout(new BorderLayout());
+//        try {
+            recipeCategoryDAO = new RecipeCategoryDAO();
+            recipeDAO = new RecipeDAO();
+            categoryDAO = new CategoryDAO();
+//        } catch (SQLException e) {
+//            e.printStackTrace();
+//            JOptionPane.showMessageDialog(this, "❌ Database connection failed for DAOs!", "Error", JOptionPane.ERROR_MESSAGE);
+//            // Disable panel or critical components if DAOs fail to init
+//        }
+        createUI();
+    }
+
+    private void createUI() {
+        JPanel inputPanel = new JPanel(new GridLayout(3, 2, 10, 10)); // 3 rows now
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        inputPanel.add(new JLabel("Select Existing Association:"));
+        existingAssociationComboBox = new JComboBox<>();
+        inputPanel.add(existingAssociationComboBox);
+
+        inputPanel.add(new JLabel("Recipe (Target/Current):"));
+        targetRecipeIdComboBox = new JComboBox<>();
+        inputPanel.add(targetRecipeIdComboBox);
+
+        inputPanel.add(new JLabel("Category (Target/Current):"));
+        targetCategoryIdComboBox = new JComboBox<>();
+        inputPanel.add(targetCategoryIdComboBox);
+
+        add(inputPanel, BorderLayout.NORTH);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        JButton assignBtn = new JButton("Assign New");
+        assignBtn.setPreferredSize(new Dimension(130, 30));
+        JButton readBtn = new JButton("Read Associations");
+        readBtn.setPreferredSize(new Dimension(160, 30));
+        JButton updateSelectedBtn = new JButton("Update Selected");
+        updateSelectedBtn.setPreferredSize(new Dimension(150, 30));
+        JButton removeSelectedBtn = new JButton("Remove Selected");
+        removeSelectedBtn.setPreferredSize(new Dimension(160, 30));
+
+        buttonPanel.add(assignBtn);
+        buttonPanel.add(readBtn);
+        buttonPanel.add(updateSelectedBtn);
+        buttonPanel.add(removeSelectedBtn);
+        add(buttonPanel, BorderLayout.CENTER);
+
+        outputArea = new JTextArea(10, 50); // Font, color etc. as before
+        outputArea.setEditable(false);
+        outputArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
+        outputArea.setBackground(new Color(40, 40, 40));
+        outputArea.setForeground(Color.WHITE);
+        outputArea.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        add(new JScrollPane(outputArea), BorderLayout.SOUTH);
+
+        // Populate JComboBoxes
+        existingAssociationComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override public void popupMenuWillBecomeVisible(PopupMenuEvent e) { populateExistingAssociationComboBox(); }
+            @Override public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
+            @Override public void popupMenuCanceled(PopupMenuEvent e) {}
+        });
+        targetRecipeIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override public void popupMenuWillBecomeVisible(PopupMenuEvent e) { populateTargetRecipeIdComboBox(); }
+            @Override public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
+            @Override public void popupMenuCanceled(PopupMenuEvent e) {}
+        });
+        targetCategoryIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override public void popupMenuWillBecomeVisible(PopupMenuEvent e) { populateTargetCategoryIdComboBox(); }
+            @Override public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {}
+            @Override public void popupMenuCanceled(PopupMenuEvent e) {}
+        });
+
+        // Action listener for the master dropdown
+        existingAssociationComboBox.addActionListener(e -> {
+            if (!isPopulatingExistingAssociationComboBox && existingAssociationComboBox.getSelectedItem() != null) {
+                loadSelectedAssociationDetails();
+            }
+        });
+
+        assignBtn.addActionListener(e -> assignNewRecipeCategory());
+        readBtn.addActionListener(e -> readRecipeCategoryAssociations());
+        updateSelectedBtn.addActionListener(e -> updateSelectedRecipeCategoryAssociation());
+        removeSelectedBtn.addActionListener(e -> removeSelectedRecipeCategoryAssociation());
+
+        // Initial population
+        populateExistingAssociationComboBox();
+        populateTargetRecipeIdComboBox();
+        populateTargetCategoryIdComboBox();
+    }
+
+    private void populateExistingAssociationComboBox() {
+        isPopulatingExistingAssociationComboBox = true;
+        RecipeCategory selectedItemBeforeUpdate = (RecipeCategory) existingAssociationComboBox.getSelectedItem();
+        existingAssociationComboBox.removeAllItems();
+        if (recipeCategoryDAO == null) return;
+        List<RecipeCategory> recipeCategories = recipeCategoryDAO.findAll();
+        if (recipeCategories.isEmpty()) {
+            existingAssociationComboBox.setSelectedItem("No associations found");
+        } else {
+            existingAssociationComboBox.setSelectedItem("Select an association to edit/delete..."); // Placeholder
+            for (RecipeCategory rc : recipeCategories) {
+                existingAssociationComboBox.addItem(rc);
+            }
+        }
+        // Try to restore selection or set to placeholder
+        if (selectedItemBeforeUpdate != null && recipeCategories.contains(selectedItemBeforeUpdate)) {
+            existingAssociationComboBox.setSelectedItem(selectedItemBeforeUpdate);
+        } else {
+             existingAssociationComboBox.setSelectedIndex(-1); // Select placeholder or first item
+        }
+        if (existingAssociationComboBox.getSelectedIndex() <= 0 || existingAssociationComboBox.getSelectedItem().toString().contains("No associations")) { // If placeholder or no items
+            currentSelectedAssociationRecipeId = -1;
+            currentSelectedAssociationCategoryId = -1;
+            targetRecipeIdComboBox.setSelectedIndex(-1); // Clear target selections
+            targetCategoryIdComboBox.setSelectedIndex(-1);
+        }
+        isPopulatingExistingAssociationComboBox = false;
+         // Trigger load for initial selection if any
+        if (existingAssociationComboBox.getSelectedIndex() > 0) { // More than placeholder
+             loadSelectedAssociationDetails();
+        }
+    }
+
+    private void populateTargetRecipeIdComboBox() {
+        isPopulatingTargetRecipeComboBox = true;
+        Recipe selectedRecipe = (Recipe) targetRecipeIdComboBox.getSelectedItem();
+        targetRecipeIdComboBox.removeAllItems();
+        if (recipeDAO == null) return;
+        List<Recipe> recipeSummaries = recipeDAO.findAll();
+        if (recipeSummaries.isEmpty()) {
+            targetRecipeIdComboBox.setSelectedItem("No Recipes available");
+        } else {
+            targetRecipeIdComboBox.setSelectedItem("Select Recipe..."); // Placeholder
+            for (Recipe summary : recipeSummaries) {
+                targetRecipeIdComboBox.addItem(summary);
+            }
+        }
+        if (selectedRecipe != null && recipeSummaries.contains(selectedRecipe)) {
+            targetRecipeIdComboBox.setSelectedItem(selectedRecipe);
+        } else {
+            targetRecipeIdComboBox.setSelectedIndex(-1); // Default to placeholder
+        }
+        isPopulatingTargetRecipeComboBox = false;
+    }
+
+    private void populateTargetCategoryIdComboBox() {
+        isPopulatingTargetCategoryComboBox = true;
+        Category selectedCategory = (Category) targetCategoryIdComboBox.getSelectedItem();
+        targetCategoryIdComboBox.removeAllItems();
+        if (categoryDAO == null) return;
+        List<Category> categorySummaries = categoryDAO.findAll();
+        if (categorySummaries.isEmpty()) {
+            targetCategoryIdComboBox.setSelectedItem("No Categories available");
+        } else {
+            targetCategoryIdComboBox.setSelectedItem("Select Category..."); // Placeholder
+            for (Category summary : categorySummaries) {
+                targetCategoryIdComboBox.addItem(summary);
+            }
+        }
+        if (selectedCategory != null && categorySummaries.contains(selectedCategory)) {
+            targetCategoryIdComboBox.setSelectedItem(selectedCategory);
+        } else {
+            targetCategoryIdComboBox.setSelectedIndex(-1); // Default to placeholder
+        }
+        isPopulatingTargetCategoryComboBox = false;
+    }
+
+    private void loadSelectedAssociationDetails() {
+        RecipeCategory selectedAssociationSummary = (RecipeCategory) existingAssociationComboBox.getSelectedItem();
+
+        if (selectedAssociationSummary != null) {
+            currentSelectedAssociationRecipeId = selectedAssociationSummary.getRecipeId();
+            currentSelectedAssociationCategoryId = selectedAssociationSummary.getCategoryId();
+
+            // Select in targetRecipeIdComboBox
+            boolean recipeFound = false;
+            for (int i = 0; i < targetRecipeIdComboBox.getItemCount(); i++) {
+                Recipe recipeItem = targetRecipeIdComboBox.getItemAt(i);
+                if (recipeItem.getId() == currentSelectedAssociationRecipeId) {
+                    targetRecipeIdComboBox.setSelectedIndex(i);
+                    recipeFound = true;
+                    break;
+                }
+            }
+            if (!recipeFound) targetRecipeIdComboBox.setSelectedIndex(0); // Placeholder
+
+            // Select in targetCategoryIdComboBox
+            boolean categoryFound = false;
+            for (int i = 0; i < targetCategoryIdComboBox.getItemCount(); i++) {
+                Category categoryItem = targetCategoryIdComboBox.getItemAt(i);
+                if (categoryItem.getId() == currentSelectedAssociationCategoryId) {
+                    targetCategoryIdComboBox.setSelectedIndex(i);
+                    categoryFound = true;
+                    break;
+                }
+            }
+             if (!categoryFound) targetCategoryIdComboBox.setSelectedIndex(0); // Placeholder
+        } else {
+            currentSelectedAssociationRecipeId = -1;
+            currentSelectedAssociationCategoryId = -1;
+            targetRecipeIdComboBox.setSelectedIndex(0); // Reset to placeholder
+            targetCategoryIdComboBox.setSelectedIndex(0); // Reset to placeholder
+        }
+    }
+
+    private void assignNewRecipeCategory() {
+        Recipe selectedRecipeItem = (Recipe) targetRecipeIdComboBox.getSelectedItem();
+        Category selectedCategoryItem = (Category) targetCategoryIdComboBox.getSelectedItem();
+
+        int recipeId = selectedRecipeItem != null ? selectedRecipeItem.getId() : -1;
+        int categoryId = selectedCategoryItem != null ? selectedCategoryItem.getId() : -1;
+
+        if (recipeId == -1 || categoryId == -1) {
+            outputArea.setText("❗ Please select a valid recipe and category to assign.");
+            return;
+        }
+
+        if (recipeCategoryDAO == null) { outputArea.setText("DAO Error!"); return; }
+        boolean success = recipeCategoryDAO.create(new RecipeCategory(recipeId, categoryId));
+        if (success) {
+            outputArea.setText("✅ New association created!");
+            populateExistingAssociationComboBox(); // Refresh master list
+            readRecipeCategoryAssociations();      // Refresh text area
+        } else {
+            outputArea.setText("❌ Failed to create association. It might already exist.");
+        }
+    }
+
+    private void readRecipeCategoryAssociations() {
+        if (recipeCategoryDAO == null) { outputArea.setText("DAO Error!"); return; }
+        List<RecipeCategory> associations = recipeCategoryDAO.findAll(); // Use the detailed display
+        if (associations.isEmpty()) {
+            outputArea.setText("📂 No recipe-category associations found.");
+        } else {
+            outputArea.setText("📂 Recipe-Category Associations:\n" + associations.stream().map(RecipeCategory::toString).collect(Collectors.joining("\n")));
+        }
+    }
+
+    private void updateSelectedRecipeCategoryAssociation() {
+        if (currentSelectedAssociationRecipeId == -1 || currentSelectedAssociationCategoryId == -1) {
+            outputArea.setText("❗ Please select an existing association from the top dropdown first.");
+            return;
+        }
+
+        Recipe selectedNewRecipeItem = (Recipe) targetRecipeIdComboBox.getSelectedItem();
+        Category selectedNewCategoryItem = (Category) targetCategoryIdComboBox.getSelectedItem();
+
+        int newRecipeId = selectedNewRecipeItem != null ? selectedNewRecipeItem.getId() : -1;
+        int newCategoryId = selectedNewCategoryItem != null ? selectedNewCategoryItem.getId() : -1;
+
+        if (newRecipeId == -1 || newCategoryId == -1) {
+            outputArea.setText("❗ Please select valid target recipe and category for the update.");
+            return;
+        }
+
+        if (currentSelectedAssociationRecipeId == newRecipeId && currentSelectedAssociationCategoryId == newCategoryId) {
+            outputArea.setText("ℹ️ No changes detected in recipe or category selection for update.");
+            return;
+        }
+
+        if (recipeCategoryDAO == null) { outputArea.setText("DAO Error!"); return; }
+        boolean success = recipeCategoryDAO.update(new RecipeCategory(newRecipeId, newCategoryId));
+
+        if (success) {
+            outputArea.setText("✅ Association updated successfully!");
+            populateExistingAssociationComboBox(); // Refresh
+            readRecipeCategoryAssociations();
+            // After update, the original selected item might be gone, so reset
+            existingAssociationComboBox.setSelectedIndex(0); // Back to placeholder
+            currentSelectedAssociationRecipeId = -1;
+            currentSelectedAssociationCategoryId = -1;
+            targetRecipeIdComboBox.setSelectedIndex(0);
+            targetCategoryIdComboBox.setSelectedIndex(0);
+        } else {
+            outputArea.setText("❌ Failed to update association. Target might already exist or original not found.");
+        }
+    }
+
+    private void removeSelectedRecipeCategoryAssociation() {
+        if (currentSelectedAssociationRecipeId == -1 || currentSelectedAssociationCategoryId == -1) {
+            outputArea.setText("❗ Please select an existing association from the top dropdown to remove.");
+            return;
+        }
+
+        if (recipeCategoryDAO == null) { outputArea.setText("DAO Error!"); return; }
+        boolean success = recipeCategoryDAO.deleteByKeys(new RecipeCategory(
+            currentSelectedAssociationRecipeId, currentSelectedAssociationCategoryId)
+        );
+
+        if (success) {
+            outputArea.setText("🗑️ Selected association removed!");
+            populateExistingAssociationComboBox(); // Refresh
+            readRecipeCategoryAssociations();
+            existingAssociationComboBox.setSelectedIndex(0); // Back to placeholder
+            currentSelectedAssociationRecipeId = -1;
+            currentSelectedAssociationCategoryId = -1;
+            targetRecipeIdComboBox.setSelectedIndex(0);
+            targetCategoryIdComboBox.setSelectedIndex(0);
+        } else {
+            outputArea.setText("❌ Failed to remove association. It might not exist.");
+        }
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\ui\RecipeIngredientPanel.java
+package recipedb.ui;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridLayout;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
+
+import recipedb.dao.IngredientDAO;
+import recipedb.dao.RecipeDAO;
+import recipedb.dao.RecipeIngredientDAO;
+import recipedb.model.Ingredient;
+import recipedb.model.Recipe;
+import recipedb.model.RecipeIngredient;
+
+public class RecipeIngredientPanel extends JPanel {
+
+    private RecipeIngredientDAO recipeIngredientDAO;
+    private RecipeDAO recipeDAO;
+    private IngredientDAO ingredientDAO;
+
+    private JComboBox<RecipeIngredient> existingAssociationComboBox;
+    private JComboBox<Recipe> targetRecipeIdComboBox;
+    private JComboBox<Ingredient> targetIngredientIdComboBox;
+    private JTextField quantityField;
+
+    private JTextArea outputArea;
+
+    private boolean isPopulatingExistingAssoc = false;
+    private boolean isPopulatingTargetRecipe = false;
+    private boolean isPopulatingTargetIngredient = false;
+
+    private RecipeIngredient selectedRecipeIngredient = null;
+
+    public RecipeIngredientPanel() {
+        setLayout(new BorderLayout());
+        // Initialize DAOs (handle potential SQLException from RecipeCategoryDAO constructor if any)
+        try {
+            recipeIngredientDAO = new RecipeIngredientDAO();
+            recipeDAO = new RecipeDAO();
+            ingredientDAO = new IngredientDAO();
+        } catch (Exception e) { // Broader catch if other DAOs might throw
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(this, "❌ DAO Initialization Failed: " + e.getMessage(), "DAO Error", JOptionPane.ERROR_MESSAGE);
+        }
+        createUI();
+    }
+
+    private void createUI() {
+        JPanel inputPanel = new JPanel(new GridLayout(4, 2, 10, 10)); // 4 rows
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        inputPanel.add(new JLabel("Select Existing Assignment:"));
+        existingAssociationComboBox = new JComboBox<>();
+        inputPanel.add(existingAssociationComboBox);
+
+        inputPanel.add(new JLabel("Recipe (Target/Current):"));
+        targetRecipeIdComboBox = new JComboBox<>();
+        inputPanel.add(targetRecipeIdComboBox);
+
+        inputPanel.add(new JLabel("Ingredient (Target/Current):"));
+        targetIngredientIdComboBox = new JComboBox<>();
+        inputPanel.add(targetIngredientIdComboBox);
+
+        inputPanel.add(new JLabel("Quantity:"));
+        quantityField = new JTextField(20);
+        inputPanel.add(quantityField);
+
+        add(inputPanel, BorderLayout.NORTH);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        JButton assignBtn = new JButton("Assign New");
+        assignBtn.setPreferredSize(new Dimension(130, 30));
+        JButton readBtn = new JButton("Read All");
+        readBtn.setPreferredSize(new Dimension(120, 30));
+        JButton updateSelectedBtn = new JButton("Update Selected");
+        updateSelectedBtn.setPreferredSize(new Dimension(150, 30));
+        JButton removeSelectedBtn = new JButton("Remove Selected");
+        removeSelectedBtn.setPreferredSize(new Dimension(160, 30));
+
+        buttonPanel.add(assignBtn);
+        buttonPanel.add(readBtn);
+        buttonPanel.add(updateSelectedBtn);
+        buttonPanel.add(removeSelectedBtn);
+        add(buttonPanel, BorderLayout.CENTER);
+
+        outputArea = new JTextArea(10, 50);
+        outputArea.setEditable(false);
+        outputArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
+        outputArea.setBackground(new Color(40, 40, 40));
+        outputArea.setForeground(Color.WHITE);
+        outputArea.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        add(new JScrollPane(outputArea), BorderLayout.SOUTH);
+
+        // PopupMenuListeners for JComboBoxes
+        existingAssociationComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override
+            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+                populateExistingAssociationComboBox();
+            }
+
+            @Override
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+            }
+
+            @Override
+            public void popupMenuCanceled(PopupMenuEvent e) {
+            }
+        });
+        targetRecipeIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override
+            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+                populateTargetRecipeIdComboBox();
+            }
+
+            @Override
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+            }
+
+            @Override
+            public void popupMenuCanceled(PopupMenuEvent e) {
+            }
+        });
+        targetIngredientIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override
+            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+                populateTargetIngredientIdComboBox();
+            }
+
+            @Override
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+            }
+
+            @Override
+            public void popupMenuCanceled(PopupMenuEvent e) {
+            }
+        });
+
+        existingAssociationComboBox.addActionListener(e -> {
+            if (!isPopulatingExistingAssoc && existingAssociationComboBox.getSelectedItem() != null) {
+                loadSelectedAssociationDetails();
+            }
+        });
+
+        assignBtn.addActionListener(e -> assignNewRecipeIngredient());
+        readBtn.addActionListener(e -> readAllRecipeIngredients());
+        updateSelectedBtn.addActionListener(e -> updateSelectedRecipeIngredient());
+        removeSelectedBtn.addActionListener(e -> removeSelectedRecipeIngredient());
+
+        // Initial population
+        populateTargetRecipeIdComboBox();
+        populateTargetIngredientIdComboBox();
+        populateExistingAssociationComboBox();
+
+    }
+
+    private void populateExistingAssociationComboBox() {
+        isPopulatingExistingAssoc = true;
+        RecipeIngredient currentSelection = (RecipeIngredient) existingAssociationComboBox.getSelectedItem();
+        existingAssociationComboBox.removeAllItems();
+        if (recipeIngredientDAO == null) {
+            return;
+        }
+        List<RecipeIngredient> summaries = recipeIngredientDAO.findAll();
+        if (!summaries.isEmpty()) {
+            for (RecipeIngredient ri : summaries) {
+                existingAssociationComboBox.addItem(ri);
+            }
+        }
+        if (currentSelection != null && summaries.contains(currentSelection)) {
+            existingAssociationComboBox.setSelectedItem(currentSelection);
+        } else {
+            existingAssociationComboBox.setSelectedIndex(-1); // Default to placeholder
+        }
+        if (existingAssociationComboBox.getSelectedIndex() <= 0) {
+            clearTargetFieldsAndSelectionState();
+        }
+        isPopulatingExistingAssoc = false;
+        if (existingAssociationComboBox.getSelectedIndex() > 0) { // Not placeholder
+            loadSelectedAssociationDetails();
+        }
+    }
+
+    private void populateTargetRecipeIdComboBox() {
+        isPopulatingTargetRecipe = true;
+        Recipe currentSelection = (Recipe) targetRecipeIdComboBox.getSelectedItem();
+        targetRecipeIdComboBox.removeAllItems();
+        if (recipeDAO == null) {
+            return;
+        }
+        List<Recipe> recipes = recipeDAO.findAll();
+        if (!recipes.isEmpty()) {
+            for (Recipe recipe : recipes) {
+                targetRecipeIdComboBox.addItem(recipe);
+            }
+        }
+        if (currentSelection != null && recipes.contains(currentSelection)) {
+            targetRecipeIdComboBox.setSelectedItem(currentSelection);
+        } else {
+            targetRecipeIdComboBox.setSelectedIndex(-1);
+        }
+        isPopulatingTargetRecipe = false;
+    }
+
+    private void populateTargetIngredientIdComboBox() {
+        isPopulatingTargetIngredient = true;
+        Ingredient currentSelection = (Ingredient) targetIngredientIdComboBox.getSelectedItem();
+        targetIngredientIdComboBox.removeAllItems();
+        if (ingredientDAO == null) {
+            return;
+        }
+        List<Ingredient> ingredients = ingredientDAO.findAll();
+        if (!ingredients.isEmpty()) {
+            for (Ingredient ingredient : ingredients) {
+                targetIngredientIdComboBox.addItem(ingredient);
+            }
+        }
+        if (currentSelection != null && ingredients.contains(currentSelection)) {
+            targetIngredientIdComboBox.setSelectedItem(currentSelection);
+        } else {
+            targetIngredientIdComboBox.setSelectedIndex(-1);
+        }
+        isPopulatingTargetIngredient = false;
+    }
+
+    private void loadSelectedAssociationDetails() {
+        RecipeIngredient recipeIngredient = (RecipeIngredient) existingAssociationComboBox.getSelectedItem();
+
+        if (recipeIngredient != null) {
+            quantityField.setText(recipeIngredient.getQuantity());
+
+            for (int i = 0; i < targetRecipeIdComboBox.getItemCount(); i++) {
+                Recipe recipe = targetRecipeIdComboBox.getItemAt(i);
+                    if (recipe.getId() == recipeIngredient.getRecipeId()) {
+                        targetRecipeIdComboBox.setSelectedItem(recipe);
+                    }
+                    else {
+                        targetRecipeIdComboBox.setSelectedIndex(0);
+                    }
+            }
+
+            for (int i = 0; i < targetIngredientIdComboBox.getItemCount(); i++) {
+                Ingredient ingredient = targetIngredientIdComboBox.getItemAt(i);
+                if (ingredient.getId() == recipeIngredient.getIngredientId()) {
+                    targetIngredientIdComboBox.setSelectedItem(ingredient);
+                }
+                else {
+                    targetIngredientIdComboBox.setSelectedIndex(0);
+                }
+            }
+
+            quantityField.setText(recipeIngredient.getQuantity());
+        } else {
+            clearTargetFieldsAndSelectionState();
+        }
+    }
+
+// In RecipeIngredientPanel.java
+    private void clearTargetFieldsAndSelectionState() {
+        selectedRecipeIngredient = null;
+        // These should now be safe due to the new call order in createUI,
+        // as the target combo boxes will have their placeholder items.
+        if (targetRecipeIdComboBox.getItemCount() > 0) {
+            targetRecipeIdComboBox.setSelectedIndex(0); // Select placeholder "Select Recipe..."
+        } else {
+            targetRecipeIdComboBox.setSelectedIndex(-1); // Fallback if somehow still empty
+        }
+        if (targetIngredientIdComboBox.getItemCount() > 0) {
+            targetIngredientIdComboBox.setSelectedIndex(0); // Select placeholder "Select Ingredient..."
+        } else {
+            targetIngredientIdComboBox.setSelectedIndex(-1); // Fallback if somehow still empty
+        }
+        quantityField.setText("");
+    }
+
+    private void assignNewRecipeIngredient() {
+        Recipe selectedRecipe = (Recipe) targetRecipeIdComboBox.getSelectedItem();
+        Ingredient selectedIngredient = (Ingredient) targetIngredientIdComboBox.getSelectedItem();
+
+        int recipeId = selectedRecipe != null ? selectedRecipe.getId() : -1;
+        int ingredientId = selectedIngredient != null ? selectedIngredient.getId() : -1;
+        String quantity = quantityField.getText();
+
+        if (recipeId == -1 || ingredientId == -1) {
+            outputArea.setText("❗ Please select a valid recipe and ingredient.");
+            return;
+        }
+        if (quantity.trim().isEmpty()) {
+            outputArea.setText("❗ Quantity cannot be empty.");
+            return;
+        }
+
+        if (recipeIngredientDAO == null) {
+            outputArea.setText("DAO Error!");
+            return;
+        }
+        boolean success = recipeIngredientDAO.create(new RecipeIngredient(recipeId, ingredientId, quantity));
+        if (success) {
+            outputArea.setText("✅ New Recipe-Ingredient assignment created!");
+            populateExistingAssociationComboBox();
+            readAllRecipeIngredients();
+        } else {
+            outputArea.setText("❌ Failed to create assignment. It might already exist (Recipe+Ingredient pair).");
+        }
+    }
+
+    private void readAllRecipeIngredients() {
+        if (recipeIngredientDAO == null) {
+            outputArea.setText("DAO Error!");
+            return;
+        }
+        List<RecipeIngredient> associations = recipeIngredientDAO.findAll();
+        if (associations.isEmpty()) {
+            outputArea.setText("📂 No recipe-ingredient assignments found.");
+        } else {
+            outputArea.setText("📂 Recipe-Ingredient Assignments:\n" + associations.stream().map(RecipeIngredient::toString).collect(Collectors.joining("\n")));
+        }
+    }
+
+    private void updateSelectedRecipeIngredient() {
+        if (selectedRecipeIngredient == null) {
+            outputArea.setText("❗ Please select an existing assignment from the top dropdown to update.");
+            return;
+        }
+
+        Recipe selectedRecipe = (Recipe) targetRecipeIdComboBox.getSelectedItem();
+        Ingredient selectedIngredient = (Ingredient) targetIngredientIdComboBox.getSelectedItem();
+
+        int newRecipeId = selectedRecipe != null ? selectedRecipe.getId() : -1;
+        int newIngredientId = selectedIngredient != null ? selectedIngredient.getId() : -1;
+        String newQuantity = quantityField.getText();
+
+        if (newRecipeId == -1 || newIngredientId == -1) {
+            outputArea.setText("❗ Please select valid target recipe and ingredient for the update.");
+            return;
+        }
+        if (newQuantity.trim().isEmpty()) {
+            outputArea.setText("❗ Quantity cannot be empty for update.");
+            return;
+        }
+
+        // Optional: Check if there are actual changes before attempting an update
+        // This would require fetching the original recipeId, ingredientId, and quantity
+        // for `currentSelectedAssociationPKId` and comparing.
+        // For now, we proceed with the update call.
+        if (recipeIngredientDAO == null) {
+            outputArea.setText("DAO Error!");
+            return;
+        }
+        boolean success = recipeIngredientDAO.update(new RecipeIngredient(newRecipeId, newIngredientId, newQuantity));
+
+        if (success) {
+            outputArea.setText("✅ Assignment (AssocID: " + selectedRecipeIngredient + ") updated successfully!");
+            populateExistingAssociationComboBox(); // Refresh
+            readAllRecipeIngredients();
+            // After update, the original selected item might have different text, so reset selection
+            existingAssociationComboBox.setSelectedIndex(0);
+            clearTargetFieldsAndSelectionState();
+        } else {
+            outputArea.setText("❌ Failed to update assignment (AssocID: " + selectedRecipeIngredient + "). Target Recipe+Ingredient pair might already exist for another entry, or original not found.");
+        }
+    }
+
+    private void removeSelectedRecipeIngredient() {
+        if (selectedRecipeIngredient == null) {
+            outputArea.setText("❗ Please select an existing assignment from the top dropdown to remove.");
+            return;
+        }
+
+        if (recipeIngredientDAO == null) {
+            outputArea.setText("DAO Error!");
+            return;
+        }
+        boolean success = recipeIngredientDAO.deleteByKeys(selectedRecipeIngredient);
+
+        if (success) {
+            outputArea.setText("🗑️ Selected assignment (AssocID: " + selectedRecipeIngredient + ") removed!");
+            populateExistingAssociationComboBox(); // Refresh
+            readAllRecipeIngredients();
+            existingAssociationComboBox.setSelectedIndex(0);
+            clearTargetFieldsAndSelectionState();
+        } else {
+            outputArea.setText("❌ Failed to remove assignment (AssocID: " + selectedRecipeIngredient + "). It might not exist.");
+        }
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\ui\RecipePanel.java
+package recipedb.ui;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridLayout;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
+
+import recipedb.dao.RecipeDAO;
+import recipedb.model.Recipe;
+
+public class RecipePanel extends JPanel {
+
+    private final RecipeDAO recipeDAO = new RecipeDAO();
+    private JTextField recipeNameField, recipeDescField, recipeInstField, recipeCookTimeField, recipePrepTimeField;
+    private JTextArea outputArea;
+    private JComboBox<Recipe> recipeIdComboBox;
+    private boolean isPopulatingComboBox = false; // Flag to prevent event recursion
+
+    public RecipePanel() {
+        setLayout(new BorderLayout());
+        createUI();
+    }
+
+    private void createUI() {
+        // Input Panel
+        JPanel inputPanel = new JPanel(new GridLayout(6, 2, 10, 10));
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        inputPanel.add(new JLabel("Select Recipe:"));
+        recipeIdComboBox = new JComboBox<>();
+        inputPanel.add(recipeIdComboBox);
+
+        inputPanel.add(new JLabel("Name:"));
+        recipeNameField = new JTextField(20);
+        inputPanel.add(recipeNameField);
+
+        inputPanel.add(new JLabel("Description:"));
+        recipeDescField = new JTextField(20);
+        inputPanel.add(recipeDescField);
+
+        inputPanel.add(new JLabel("Instructions:"));
+        recipeInstField = new JTextField(20);
+        inputPanel.add(recipeInstField);
+
+        inputPanel.add(new JLabel("Cook time:"));
+        recipeCookTimeField = new JTextField(20);
+        inputPanel.add(recipeCookTimeField);
+
+        inputPanel.add(new JLabel("Prep time:"));
+        recipePrepTimeField = new JTextField(20);
+        inputPanel.add(recipePrepTimeField);
+
+        add(inputPanel, BorderLayout.NORTH);
+
+        // Buttons Panel
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        JButton createBtn = new JButton("Create");
+        createBtn.setPreferredSize(new Dimension(80, 30));
+        JButton readBtn = new JButton("Read");
+        readBtn.setPreferredSize(new Dimension(80, 30));
+        JButton updateBtn = new JButton("Update");
+        updateBtn.setPreferredSize(new Dimension(80, 30));
+        JButton deleteBtn = new JButton("Delete");
+        deleteBtn.setPreferredSize(new Dimension(80, 30));
+
+        buttonPanel.add(createBtn);
+        buttonPanel.add(readBtn);
+        buttonPanel.add(updateBtn);
+        buttonPanel.add(deleteBtn);
+        add(buttonPanel, BorderLayout.CENTER);
+
+        // Output Panel
+        outputArea = new JTextArea(10, 50);
+        outputArea.setEditable(false);
+        outputArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
+        outputArea.setBackground(new Color(40, 40, 40));
+        outputArea.setForeground(Color.WHITE);
+        outputArea.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+
+        add(new JScrollPane(outputArea), BorderLayout.SOUTH);
+        // Populate JComboBox when it's about to become visible
+        recipeIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override
+            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+                populateRecipeIdComboBox();
+            }
+
+            @Override
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+            }
+
+            @Override
+            public void popupMenuCanceled(PopupMenuEvent e) {
+            }
+        });
+
+        // Load details when an item is selected
+        recipeIdComboBox.addActionListener(e -> {
+            // Ensure this doesn't fire due to programmatic changes during population
+            if (!isPopulatingComboBox && recipeIdComboBox.getSelectedItem() != null) {
+                loadSelectedRecipeDetails();
+            }
+        });
+
+        // Button Actions
+        createBtn.addActionListener(e -> createRecipe());
+        readBtn.addActionListener(e -> readRecipes());
+        updateBtn.addActionListener(e -> updateRecipe());
+        deleteBtn.addActionListener(e -> deleteRecipe());
+    }
+
+    private void loadSelectedRecipeDetails() {
+        Recipe recipe = (Recipe) recipeIdComboBox.getSelectedItem();
+        if (recipe == null) {
+            clearInputFields(false);
+        } else {
+            recipeNameField.setText(recipe.getName());
+            recipeDescField.setText(recipe.getDescription());
+            recipeInstField.setText(recipe.getInstructions());
+            recipeCookTimeField.setText(String.valueOf(recipe.getCookTime()));
+            recipePrepTimeField.setText(String.valueOf(recipe.getPrepTime()));
+
+            List<Double> nutritionFacts = recipeDAO.getRecipeNutrition(recipe.getId());
+            String nutritionText =
+                "Recipe Nutrition Facts\n" +
+                    "----------------\n" +
+                    "Calories: " + nutritionFacts.get(0) + "\n" +
+                    "Protein: " + nutritionFacts.get(1) + "\n" +
+                    "Fat: " + nutritionFacts.get(2) + "\n" +
+                    "Carbohydrates: " + nutritionFacts.get(3) + "\n" +
+                    "Fiber: " + nutritionFacts.get(4);
+            outputArea.setText(nutritionText);
+        }
+    }
+
+    private void populateRecipeIdComboBox() {
+        isPopulatingComboBox = true; // Set flag
+        Recipe selectedItemBeforeUpdate = (Recipe) recipeIdComboBox.getSelectedItem(); // Preserve selection
+        recipeIdComboBox.removeAllItems();
+        List<Recipe> recipeSummaries = recipeDAO.findAll();
+        if (recipeSummaries.isEmpty()) {
+            outputArea.append("\nNo recipes available to select.");
+        } else {
+            for (Recipe summary : recipeSummaries) {
+                recipeIdComboBox.addItem(summary);
+            }
+            // Try to restore previous selection
+            if (selectedItemBeforeUpdate != null && recipeSummaries.contains(selectedItemBeforeUpdate)) {
+                recipeIdComboBox.setSelectedItem(selectedItemBeforeUpdate);
+            } else if (!recipeSummaries.isEmpty()) {
+                recipeIdComboBox.setSelectedIndex(-1); // Or 0 for first item
+            }
+        }
+        if (recipeIdComboBox.getSelectedIndex() == -1) {
+            clearInputFields(false); // Clear fields if no selection (or after population)
+        }
+        isPopulatingComboBox = false; // Reset flag
+    }
+
+    private void clearInputFields(boolean clearComboBoxAlso) {
+        if (clearComboBoxAlso) {
+            // Setting selected index to -1 might trigger action listener if not careful
+            // The isPopulatingComboBox flag helps manage this
+            Object currentSelection = recipeIdComboBox.getSelectedItem();
+            recipeIdComboBox.setSelectedIndex(-1);
+            if (currentSelection != null) { // If something was selected, now it's not, so clear fields.
+                // The action listener for selection change should handle clearing fields
+                // if it's correctly guarded by isPopulatingComboBox
+            }
+        }
+        recipeNameField.setText("");
+        recipeDescField.setText("");
+        recipeInstField.setText("");
+        recipeCookTimeField.setText("");
+        recipePrepTimeField.setText("");
+    }
+
+    private void createRecipe() {
+        String name = recipeNameField.getText();
+        String description = recipeDescField.getText();
+        String instructions = recipeInstField.getText();
+        int cookTime = Integer.parseInt(recipeCookTimeField.getText());
+        int prepTime = Integer.parseInt(recipePrepTimeField.getText());
+
+        boolean success = recipeDAO.create(new Recipe(-1, name, description, instructions, prepTime, cookTime));
+        outputArea.setText(success ? "✅ Recipe added: " + name : "❌ Failed to add recipe.");
+    }
+
+    private void readRecipes() {
+        List<Recipe> recipes = recipeDAO.findAll();
+        outputArea.setText("📜 Recipes:\n" + recipes.stream().map(Recipe::toDetailedString).collect(Collectors.joining("\n")));
+    }
+
+    private void updateRecipe() {
+        Recipe selectedItem = (Recipe) recipeIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select a recipe from the dropdown to update.");
+            return;
+        }
+
+        try {
+            String name = recipeNameField.getText();
+            String description = recipeDescField.getText();
+            String instructions = recipeInstField.getText();
+
+            if (name.trim().isEmpty() || recipePrepTimeField.getText().trim().isEmpty() || recipeCookTimeField.getText().trim().isEmpty()) {
+                outputArea.setText("❗ Name, Prep Time, and Cook Time cannot be empty for update.");
+                return;
+            }
+            int prepTime = Integer.parseInt(recipePrepTimeField.getText().trim()); // Correct order for DAO
+            int cookTime = Integer.parseInt(recipeCookTimeField.getText().trim()); // Correct order for DAO
+
+            // Ensure your DAO's updateRecipe method expects prepTime then cookTime
+            boolean success = recipeDAO.update(new Recipe(selectedItem.getId(), name, description, instructions, prepTime, cookTime));
+            if (success) {
+                outputArea.setText("✅ Recipe updated: " + name);
+                // String oldSelection = (String) recipeIdComboBox.getSelectedItem(); // Not needed if we are re-populating and trying to set new
+                populateRecipeIdComboBox(); // Refresh dropdown
+
+                // Attempt to re-select the item (its name might have changed)
+                String potentiallyUpdatedItemSummary = String.format("ID: %d - %s", selectedItem.getId(), name);
+                javax.swing.DefaultComboBoxModel<Recipe> model = (javax.swing.DefaultComboBoxModel<Recipe>) recipeIdComboBox.getModel();
+                for (int i = 0; i < model.getSize(); i++) {
+                    if (model.getElementAt(i).equals(potentiallyUpdatedItemSummary)) {
+                        recipeIdComboBox.setSelectedIndex(i);
+                        break;
+                    }
+                }
+            } else {
+                outputArea.setText("❌ No recipe found with ID: " + selectedItem.getId() + " or update failed.");
+            }
+        } catch (NumberFormatException ex) {
+            outputArea.setText("❗ Invalid number format for Prep or Cook Time!");
+            ex.printStackTrace();
+        }
+    }
+
+    private void deleteRecipe() {
+        Recipe selectedItem = (Recipe) recipeIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select a recipe from the dropdown to delete.");
+            return;
+        }
+
+        try {
+            boolean success = recipeDAO.deleteById(selectedItem.getId());
+            if (success) {
+                outputArea.setText("🗑️ Recipe deleted (ID: " + selectedItem.getId() + ")");
+                populateRecipeIdComboBox(); // Refresh dropdown
+                clearInputFields(true); // Clear all fields including combo selection
+            } else {
+                outputArea.setText("❌ No recipe found with ID: " + selectedItem.getId() + " or delete failed.");
+            }
+        } catch (Exception ex) { // Broader catch for any unexpected DAO issues
+            outputArea.setText("❗ An error occurred during deletion.");
+            ex.printStackTrace();
+        }
+    }
+}
+
+
+================================================================================
+
+# File: src\main\java\recipedb\ui\UserPanel.java
+package recipedb.ui;
+
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridLayout;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import javax.swing.BorderFactory;
+import javax.swing.DefaultComboBoxModel;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JPasswordField;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
+
+import recipedb.dao.UserDAO;
+import recipedb.model.User;
+
+public class UserPanel extends JPanel {
+
+    private final UserDAO userDAO;
+    private JTextField usernameField;
+    private JPasswordField passwordField;
+    private JTextArea outputArea;
+    private JComboBox<User> userIdComboBox; // JComboBox for category selection
+    private boolean isPopulatingComboBox = false; // Flag to prevent event recursion
+
+    public UserPanel() {
+        setLayout(new BorderLayout());
+        userDAO = new UserDAO();
+        createUI();
+    }
+
+    private void createUI() {
+        JPanel inputPanel = new JPanel(new GridLayout(3, 2, 10, 10));
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        inputPanel.add(new JLabel("Select User:"));
+        userIdComboBox = new JComboBox<>();
+        inputPanel.add(userIdComboBox);
+
+        inputPanel.add(new JLabel("Username:"));
+        usernameField = new JTextField(20);
+        inputPanel.add(usernameField);
+
+        inputPanel.add(new JLabel("Password:"));
+        passwordField = new JPasswordField(20);
+        inputPanel.add(passwordField);
+
+        add(inputPanel, BorderLayout.NORTH);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        JButton createBtn = new JButton("Create");
+        createBtn.setPreferredSize(new Dimension(80, 30));
+        JButton readBtn = new JButton("Read All"); // Changed label for clarity
+        readBtn.setPreferredSize(new Dimension(100, 30));
+        JButton updateBtn = new JButton("Update");
+        updateBtn.setPreferredSize(new Dimension(80, 30));
+        JButton deleteBtn = new JButton("Delete");
+        deleteBtn.setPreferredSize(new Dimension(80, 30));
+
+        buttonPanel.add(createBtn);
+        buttonPanel.add(readBtn);
+        buttonPanel.add(updateBtn);
+        buttonPanel.add(deleteBtn);
+        add(buttonPanel, BorderLayout.CENTER);
+
+        outputArea = new JTextArea(10, 50);
+        outputArea.setEditable(false);
+        outputArea.setFont(new Font("Monospaced", Font.PLAIN, 14));
+        outputArea.setBackground(new Color(40, 40, 40));
+        outputArea.setForeground(Color.WHITE);
+        outputArea.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+        add(new JScrollPane(outputArea), BorderLayout.SOUTH);
+
+        // Populate JComboBox when it's about to become visible
+        userIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override
+            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
+            	populateUserIdComboBox();
+            }
+
+            @Override
+            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
+            }
+
+            @Override
+            public void popupMenuCanceled(PopupMenuEvent e) {
+            }
+        });
+
+        // Load details when an item is selected
+        userIdComboBox.addActionListener(e -> {
+            if (!isPopulatingComboBox && userIdComboBox.getSelectedItem() != null) {
+                loadSelectedUserDetails();
+            }
+        });
+
+        createBtn.addActionListener(e -> createUser());
+        readBtn.addActionListener(e -> readUsers());
+        updateBtn.addActionListener(e -> updateUser());
+        deleteBtn.addActionListener(e -> deleteUser());
+
+        // Initial population
+        populateUserIdComboBox();
+    }
+
+    private void populateUserIdComboBox() {
+        isPopulatingComboBox = true;
+        User selectedItemBeforeUpdate = (User) userIdComboBox.getSelectedItem();
+        userIdComboBox.removeAllItems();
+
+        List<User> userSummaries = userDAO.findAll();
+        if (userSummaries.isEmpty()) {
+            outputArea.append("\nNo users available to select.");
+        } else {
+            for (User summary : userSummaries) {
+            	userIdComboBox.addItem(summary);
+            }
+            if (userIdComboBox != null && userSummaries.contains(selectedItemBeforeUpdate)) {
+            	userIdComboBox.setSelectedItem(selectedItemBeforeUpdate);
+            } else if (!userSummaries.isEmpty()) {
+            	userIdComboBox.setSelectedIndex(-1);
+            }
+        }
+        if (userIdComboBox.getSelectedIndex() == -1) {
+            clearInputFields(false);
+        }
+        isPopulatingComboBox = false;
+    }
+
+    private void loadSelectedUserDetails() {
+        User selectedItem = (User) userIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            clearInputFields(false); // Only clear name field
+            return;
+        }
+
+        User user = userDAO.findById(selectedItem.getId());
+        if (user != null) {
+            usernameField.setText(user.getUserName());
+            passwordField.setText(user.getPassword());
+        } else {
+            outputArea.setText("❌ Error: Could not load details for User ID: " + selectedItem.getId());
+            clearInputFields(false);
+        }
+    }
+
+    private void clearInputFields(boolean clearComboBoxAlso) {
+        if (clearComboBoxAlso) {
+        	userIdComboBox.setSelectedIndex(-1);
+        }
+        usernameField.setText("");
+    }
+
+    private void createUser() {
+        String username = usernameField.getText();
+        String password = Arrays.toString(passwordField.getPassword());
+        if (username.trim().isEmpty()) {
+            outputArea.setText("❗ Username cannot be empty.");
+            return;
+        }
+        if (password.trim().isEmpty()) {
+            outputArea.setText("❗ Password cannot be empty.");
+            return;
+        }
+        try {
+            User user = new User(-1, username, password );
+            boolean success = userDAO.create(user);
+            if (success) {
+                outputArea.setText("✅ User created: " + username);
+//                InputFields(true);
+            } else {
+                outputArea.setText("❌ Failed to create User. It might already exist or another error occurred.");
+            }
+        } catch (Exception ex) {
+            outputArea.setText("❗ Error processing request: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+
+    private void readUsers() {
+        List<User> users = userDAO.findAll();
+        outputArea.setText("📂 Users:\n" + users.stream().map(User::toString).collect(Collectors.joining("\n")));
+    }
+
+    private void updateUser() {
+        User selectedItem = (User) userIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select a user from the dropdown to update.");
+            return;
+        }
+
+        String name = usernameField.getText();
+        if (name.trim().isEmpty()) {
+            outputArea.setText("❗ User name cannot be empty for update.");
+            return;
+        }
+
+        String password = Arrays.toString(passwordField.getPassword());
+        if (password.trim().isEmpty()) {
+            outputArea.setText("❗ Password cannot be empty for update.");
+            return;
+        }
+
+        try {
+            boolean success = userDAO.update(new User(selectedItem.getId(), name, password));
+            if (success) {
+                outputArea.setText("✅ User updated: " + name);
+                populateUserIdComboBox();
+
+                // Attempt to re-select the updated item
+                DefaultComboBoxModel<User> model = (DefaultComboBoxModel<User>) userIdComboBox.getModel();
+                for (int i = 0; i < model.getSize(); i++) {
+                    if (model.getElementAt(i).equals(selectedItem)) {
+                        userIdComboBox.setSelectedIndex(i);
+                        break;
+                    }
+                }
+            } else {
+                outputArea.setText("❌ No User found with ID: " + selectedItem.getId() + " or update failed.");
+            }
+        } catch (Exception ex) {
+            outputArea.setText("❗ Error processing update request: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+
+    private void deleteUser() {
+        User selectedItem = (User) userIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select a user from the dropdown to delete.");
+            return;
+        }
+
+        try {
+            boolean success = userDAO.deleteById(selectedItem.getId());
+            if (success) {
+                outputArea.setText("🗑️ User deleted (ID: " + selectedItem.getId() + ")");
+                populateUserIdComboBox();
+            } else {
+                outputArea.setText("❌ No user found with ID: " + selectedItem.getId() + " or delete failed (it might be in use).");
+            }
+        } catch (Exception ex) {
+            outputArea.setText("❗ An error occurred during deletion: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+}
+
+
+================================================================================
+
