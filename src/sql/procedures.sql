@@ -64,3 +64,19 @@ BEGIN
 END //
 
 DELIMITER ;
+
+DELIMITER //
+CREATE PROCEDURE IF NOT EXISTS sp_RecipeIngredient_FindAll ()
+BEGIN
+  SELECT
+    ri.recipe_id,
+    r.name AS RecipeName,
+    ri.ingredient_id,
+    i.name AS IngredientName,
+    ri.quantity
+  FROM RecipeIngredient ri
+         JOIN Recipe r ON ri.recipe_id = r.id
+         JOIN Ingredient i ON ri.ingredient_id = i.id
+  ORDER BY r.name;
+END //
+DELIMITER ;
