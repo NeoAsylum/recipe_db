@@ -155,7 +155,7 @@ public class RecipeCategoryPanel extends JPanel {
         if (selectedItemBeforeUpdate != null && recipeCategories.contains(selectedItemBeforeUpdate)) {
             existingAssociationComboBox.setSelectedItem(selectedItemBeforeUpdate);
         } else {
-             existingAssociationComboBox.setSelectedIndex(0); // Select placeholder or first item
+             existingAssociationComboBox.setSelectedIndex(-1); // Select placeholder or first item
         }
         if (existingAssociationComboBox.getSelectedIndex() <= 0 || existingAssociationComboBox.getSelectedItem().toString().contains("No associations")) { // If placeholder or no items
             currentSelectedAssociationRecipeId = -1;
@@ -187,7 +187,7 @@ public class RecipeCategoryPanel extends JPanel {
         if (selectedRecipe != null && recipeSummaries.contains(selectedRecipe)) {
             targetRecipeIdComboBox.setSelectedItem(selectedRecipe);
         } else {
-            targetRecipeIdComboBox.setSelectedIndex(0); // Default to placeholder
+            targetRecipeIdComboBox.setSelectedIndex(-1); // Default to placeholder
         }
         isPopulatingTargetRecipeComboBox = false;
     }
@@ -209,7 +209,7 @@ public class RecipeCategoryPanel extends JPanel {
         if (selectedCategory != null && categorySummaries.contains(selectedCategory)) {
             targetCategoryIdComboBox.setSelectedItem(selectedCategory);
         } else {
-            targetCategoryIdComboBox.setSelectedIndex(0); // Default to placeholder
+            targetCategoryIdComboBox.setSelectedIndex(-1); // Default to placeholder
         }
         isPopulatingTargetCategoryComboBox = false;
     }

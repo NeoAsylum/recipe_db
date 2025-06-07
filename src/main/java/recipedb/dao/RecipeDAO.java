@@ -102,4 +102,26 @@ public class RecipeDAO implements IdDao<Recipe>{
             return false;
         }
     }
+
+    public List<Double> getRecipeNutrition(int recipeId) {
+        List<Double> result = new ArrayList<>();
+        String sql = "{CALL sp_TotalRecipeNutrition(?)}";
+        try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)){
+            stmt.setInt(1, recipeId);
+            ResultSet resultSet = stmt.executeQuery();
+
+            if (resultSet.next()) {
+                result.add(resultSet.getDouble(1)); // Calories
+                result.add(resultSet.getDouble(2)); // Protein
+                result.add(resultSet.getDouble(3)); // Fat
+                result.add(resultSet.getDouble(4)); // Carbohydrates
+                result.add(resultSet.getDouble(5)); // Fiber
+            }
+
+            return result;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return result;
+        }
+    }
 }

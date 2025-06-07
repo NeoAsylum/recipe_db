@@ -134,7 +134,17 @@ public class RecipePanel extends JPanel {
             recipeInstField.setText(recipe.getInstructions());
             recipeCookTimeField.setText(String.valueOf(recipe.getCookTime()));
             recipePrepTimeField.setText(String.valueOf(recipe.getPrepTime()));
-            // outputArea.setText("Selected: " + details.get("name")); // Optional feedback
+
+            List<Double> nutritionFacts = recipeDAO.getRecipeNutrition(recipe.getId());
+            String nutritionText =
+                "Recipe Nutrition Facts\n" +
+                    "----------------\n" +
+                    "Calories: " + nutritionFacts.get(0) + "\n" +
+                    "Protein: " + nutritionFacts.get(1) + "\n" +
+                    "Fat: " + nutritionFacts.get(2) + "\n" +
+                    "Carbohydrates: " + nutritionFacts.get(3) + "\n" +
+                    "Fiber: " + nutritionFacts.get(4);
+            outputArea.setText(nutritionText);
         }
     }
 

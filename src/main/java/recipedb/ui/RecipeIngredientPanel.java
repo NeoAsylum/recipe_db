@@ -185,7 +185,7 @@ public class RecipeIngredientPanel extends JPanel {
         if (currentSelection != null && summaries.contains(currentSelection)) {
             existingAssociationComboBox.setSelectedItem(currentSelection);
         } else {
-            existingAssociationComboBox.setSelectedIndex(0); // Default to placeholder
+            existingAssociationComboBox.setSelectedIndex(-1); // Default to placeholder
         }
         if (existingAssociationComboBox.getSelectedIndex() <= 0) {
             clearTargetFieldsAndSelectionState();
@@ -212,7 +212,7 @@ public class RecipeIngredientPanel extends JPanel {
         if (currentSelection != null && recipes.contains(currentSelection)) {
             targetRecipeIdComboBox.setSelectedItem(currentSelection);
         } else {
-            targetRecipeIdComboBox.setSelectedIndex(0);
+            targetRecipeIdComboBox.setSelectedIndex(-1);
         }
         isPopulatingTargetRecipe = false;
     }
@@ -233,7 +233,7 @@ public class RecipeIngredientPanel extends JPanel {
         if (currentSelection != null && ingredients.contains(currentSelection)) {
             targetIngredientIdComboBox.setSelectedItem(currentSelection);
         } else {
-            targetIngredientIdComboBox.setSelectedIndex(0);
+            targetIngredientIdComboBox.setSelectedIndex(-1);
         }
         isPopulatingTargetIngredient = false;
     }
