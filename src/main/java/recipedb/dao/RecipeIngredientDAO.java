@@ -2,6 +2,7 @@ package recipedb.dao;
 
 import recipedb.model.RecipeIngredient;
 
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -59,16 +60,11 @@ public class RecipeIngredientDAO implements MultiKeyDao<RecipeIngredient> {
     @Override
     public List<RecipeIngredient> findAll() {
         List<RecipeIngredient> result = new ArrayList<>();
-        String sql =
-            "SELECT ri.recipe_id, r.name AS RecipeName, "
-                +"ri.ingredient_id, i.name AS IngredientName, ri.quantity "
-                + "FROM RecipeIngredient ri "
-                + "JOIN Recipe r ON ri.recipe_id = r.id "
-                + "JOIN Ingredient i ON ri.ingredient_id = i.id "
-                + "ORDER BY r.name";
+        String sql = "{CALL sp_RecipeIngredient_FindAll()}";
+
         try (Connection conn = DatabaseUtil.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
+             CallableStatement cstmt = conn.prepareCall(sql);
+             ResultSet rs = cstmt.executeQuery()) {
             while (rs.next()) {
                 result.add(new RecipeIngredient(
                     rs.getInt("recipe_id"),
