@@ -67,13 +67,14 @@ public class ReviewDAO implements IdDao<Review>{
 	
 	@Override
     public boolean update(Review object) {
-        String sql = "UPDATE Recipe SET recipe_id=?, user_id=?, message=? WHERE id=?";
+        String sql = "UPDATE Review SET recipe_id=?, user_id=?, message=? WHERE id=?";
         // implement transaction to make each field update in a separate sql query,
         // bcs right now users have to fill out each field to not set them to null which is annoying
         try (PreparedStatement stmt = DatabaseUtil.getConnection().prepareStatement(sql)) {
             stmt.setInt(1, object.getRecipe());
             stmt.setInt(2, object.getUser());
             stmt.setString(3, object.getMessage());
+            stmt.setInt(4, object.getId());
             int rowsAffected = stmt.executeUpdate();
             return rowsAffected > 0;
         } catch (SQLException e) {

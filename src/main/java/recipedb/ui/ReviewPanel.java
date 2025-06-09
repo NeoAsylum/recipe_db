@@ -7,6 +7,7 @@ import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -22,9 +23,12 @@ import javax.swing.event.PopupMenuListener;
 import recipedb.dao.ReviewDAO;
 import recipedb.dao.UserDAO;
 import recipedb.dao.RecipeDAO;
+import recipedb.model.Category;
 import recipedb.model.Recipe;
+import recipedb.model.RecipeCategory;
 import recipedb.model.Review;
 import recipedb.model.User;
+
 
 public class ReviewPanel extends JPanel {
 
@@ -33,10 +37,15 @@ public class ReviewPanel extends JPanel {
     private final UserDAO userDAO = new UserDAO();
     private JTextField messageField;
     private JTextArea outputArea;
+    private JComboBox<Review> reviewIdComboBox;
     private JComboBox<Recipe> recipeIdComboBox;
     private JComboBox<User> userIdComboBox;
+    private boolean isPopulatingReviewComboBox = false;
     private boolean isPopulatingRecipeComboBox = false;
     private boolean isPopulatingUserComboBox = false; 
+    
+    private int currentSelectedRecipeID = -1;
+    private int currentSelectedUserId = -1;
     
     // Sotring the selection of recepie and user
     private int recipeID;
@@ -52,6 +61,10 @@ public class ReviewPanel extends JPanel {
         JPanel inputPanel = new JPanel(new GridLayout(6, 2, 10, 10));
         inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
+        inputPanel.add(new JLabel("Select Review:"));
+        reviewIdComboBox = new JComboBox<>();
+        inputPanel.add(reviewIdComboBox);
+        
         inputPanel.add(new JLabel("Select Recipe:"));
         recipeIdComboBox = new JComboBox<>();
         inputPanel.add(recipeIdComboBox);
@@ -109,62 +122,105 @@ public class ReviewPanel extends JPanel {
 
         add(new JScrollPane(outputArea), BorderLayout.SOUTH);
         
-        // Populate RecipeJComboBox when it's about to become visible
-        recipeIdComboBox.addPopupMenuListener(new PopupMenuListener() {
-            @Override
-            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
-                populateRecipeIdComboBox();
-            }
-
-            @Override
-            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
-            }
-
-            @Override
-            public void popupMenuCanceled(PopupMenuEvent e) {
-            }
+        // Populate Review ComboBox when it's about to become visible
+        reviewIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override public void popupMenuWillBecomeVisible(PopupMenuEvent e) { populateReviewIdComboBox(); }
+            @Override public void popupMenuWillBecomeInvisible(PopupMenuEvent e) { }
+            @Override public void popupMenuCanceled(PopupMenuEvent e) { }
         });
         
-        // Load details when an recipe is selected
+	    // Information of the Recipe being reviewed
+	    reviewIdComboBox.addActionListener(e -> {
+	        // Ensure this doesn't fire due to programmatic changes during population
+	        if (!isPopulatingReviewComboBox && reviewIdComboBox.getSelectedItem() != null) { loadSelectedReviewDetails(); }
+	    });
+        
+        // Populate Recipe ComboBox when it's about to become visible
+        recipeIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override public void popupMenuWillBecomeVisible(PopupMenuEvent e) { populateRecipeIdComboBox(); }
+            @Override public void popupMenuWillBecomeInvisible(PopupMenuEvent e) { }
+            @Override public void popupMenuCanceled(PopupMenuEvent e) { }
+        });
+        
+        
+        // Information of the Recipe being reviewed
         recipeIdComboBox.addActionListener(e -> {
             // Ensure this doesn't fire due to programmatic changes during population
             if (!isPopulatingRecipeComboBox && recipeIdComboBox.getSelectedItem() != null) {
                 selectRecipe();
             }
+        });       
+
+        
+        // Populate user ComboBox when it's about to become visible
+        userIdComboBox.addPopupMenuListener(new PopupMenuListener() {
+            @Override public void popupMenuWillBecomeVisible(PopupMenuEvent e) { populateUserIdComboBox(); }
+            @Override public void popupMenuWillBecomeInvisible(PopupMenuEvent e) { }
+            @Override public void popupMenuCanceled(PopupMenuEvent e) { }
         });
         
-        // Load details when an user is selected
+        // Information about the user reviewing the recipe
         userIdComboBox.addActionListener(e -> {
             // Ensure this doesn't fire due to programmatic changes during population
             if (!isPopulatingUserComboBox && userIdComboBox.getSelectedItem() != null) {
                 selectUser();
             }
-        });
-
-        // Populate user JComboBox when it's about to become visible
-        userIdComboBox.addPopupMenuListener(new PopupMenuListener() {
-            @Override
-            public void popupMenuWillBecomeVisible(PopupMenuEvent e) {
-                populateUserIdComboBox();
-            }
-
-            @Override
-            public void popupMenuWillBecomeInvisible(PopupMenuEvent e) {
-            }
-
-            @Override
-            public void popupMenuCanceled(PopupMenuEvent e) {
-            }
-        });
-        
-        
+        });        
 
         // Button Actions
         createBtn.addActionListener(e -> createReview());
-//        readBtn.addActionListener(e -> readRecipes());
-//        updateBtn.addActionListener(e -> updateRecipe());
-//        deleteBtn.addActionListener(e -> deleteRecipe());
+        readBtn.addActionListener(e -> readReviews());
+        updateBtn.addActionListener(e -> updateReview());
+        deleteBtn.addActionListener(e -> deleteReview());
     }
+    
+    private void loadSelectedReviewDetails() {
+        Review selectedAssociationSummary = (Review) reviewIdComboBox.getSelectedItem();
+        populateRecipeIdComboBox();
+        populateUserIdComboBox();
+        
+        if (selectedAssociationSummary != null) {
+            currentSelectedRecipeID = selectedAssociationSummary.getRecipe();
+            currentSelectedUserId = selectedAssociationSummary.getUser();
+
+            // Select in targetRecipeIdComboBox
+            boolean recipeFound = false;
+            
+            
+            for (int i = 0; i < recipeIdComboBox.getItemCount(); i++) {
+                Recipe recipeItem = recipeIdComboBox.getItemAt(i);
+                if (recipeItem.getId() == currentSelectedRecipeID) {
+                	recipeIdComboBox.setSelectedIndex(i);
+                    recipeFound = true;
+                    break;
+                }
+            }
+            if (!recipeFound) recipeIdComboBox.setSelectedIndex(0); // Placeholder
+
+            // Select in targetCategoryIdComboBox
+            boolean userFound = false;
+            for (int i = 0; i < userIdComboBox.getItemCount(); i++) {
+                User userItem = userIdComboBox.getItemAt(i);
+                if (userItem.getId() == currentSelectedUserId) {
+                    userIdComboBox.setSelectedIndex(i);
+                    userFound = true;
+                    break;
+                }
+            }            
+            if (!userFound) userIdComboBox.setSelectedIndex(0); // Placeholder
+            
+        } else {
+            currentSelectedRecipeID = -1;
+            currentSelectedUserId = -1;
+            recipeIdComboBox.setSelectedIndex(0); // Reset to placeholder
+            userIdComboBox.setSelectedIndex(0); // Reset to placeholder
+        }
+        
+        // Populating the message field
+        messageField.setText(selectedAssociationSummary.getMessage());
+    }
+    
+    
     
     private void selectRecipe() {
         Recipe recipe = (Recipe) recipeIdComboBox.getSelectedItem();
@@ -172,7 +228,6 @@ public class ReviewPanel extends JPanel {
             clearInputFields(false);
         } else {
             recipeID = recipe.getId();
-             outputArea.setText("Selected Recipe: " + recipeID); // Optional feedback
         }
     }
     
@@ -182,10 +237,32 @@ public class ReviewPanel extends JPanel {
             clearInputFields(false);
         } else {
             userID = user.getId();
-             outputArea.setText("Selected User: " + userID); // Optional feedback
         }
     }
 
+    private void populateReviewIdComboBox() {
+    	isPopulatingReviewComboBox = true; // Set flag
+        Review selectedItemBeforeUpdate = (Review) reviewIdComboBox.getSelectedItem(); // Preserve selection
+        reviewIdComboBox.removeAllItems();
+        List<Review> reviewSummaries = revieweDAO.findAll();
+        if (reviewSummaries.isEmpty()) {
+            outputArea.append("\nNo recipes available to select.");
+        } else {
+            for (Review summary : reviewSummaries) {
+                reviewIdComboBox.addItem(summary);
+            }
+            // Try to restore previous selection
+            if (selectedItemBeforeUpdate != null && reviewSummaries.contains(selectedItemBeforeUpdate)) {
+                reviewIdComboBox.setSelectedItem(selectedItemBeforeUpdate);
+            } else if (!reviewSummaries.isEmpty()) {
+            	reviewIdComboBox.setSelectedIndex(-1); // Or 0 for first item
+            }
+        }
+        if (reviewIdComboBox.getSelectedIndex() == -1) {
+            clearInputFields(false); // Clear fields if no selection (or after population)
+        }
+        isPopulatingReviewComboBox = false; // Reset flag
+    }
 
     private void populateRecipeIdComboBox() {
     	isPopulatingRecipeComboBox = true; // Set flag
@@ -256,6 +333,81 @@ public class ReviewPanel extends JPanel {
 
         boolean success = revieweDAO.create(new Review(-1, recipe, user, message));
         outputArea.setText(success ? "✅ Review added: " + message : "❌ Failed to add recipe.");
+    }
+    
+    private void readReviews() {
+        List<Review> reviews = revieweDAO.findAll();
+        outputArea.setText("📜 Reviews:\n" + reviews.stream().map(Review::toDetailedString).collect(Collectors.joining("\n")));
+    }
+    
+    private void updateReview() {
+        Review selectedItem = (Review) reviewIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select a review from the dropdown to update.");
+            return;
+        }
+
+        try {
+        	Recipe recipe = (Recipe) recipeIdComboBox.getSelectedItem();
+        	if (recipe == null) { outputArea.setText("Recipe cannot be null"); return;} // Catching recipe null error
+        	User user = (User) userIdComboBox.getSelectedItem();
+        	if (user == null) { outputArea.setText("user cannot be null"); return;} // Catching user null error
+        	
+        	int recipeId = recipe.getId();
+        	int userId = user.getId();
+        	String message = messageField.getText();
+
+            if (message.trim().isEmpty()) {
+                outputArea.setText("❗ Recipe ID, User ID, and Message cannot be empty!.");
+                return;
+            }
+//            
+
+            // Ensure your DAO's updateRecipe method expects prepTime then cookTime
+            boolean success = revieweDAO.update(new Review(selectedItem.getId(), recipeId, userId, message));
+            if (success) {
+                outputArea.setText("✅ Review updated: " + message);
+                // String oldSelection = (String) recipeIdComboBox.getSelectedItem(); // Not needed if we are re-populating and trying to set new
+                populateReviewIdComboBox(); // Refresh dropdown
+
+                // Attempt to re-select the item (its name might have changed)
+                String potentiallyUpdatedItemSummary = String.format("ID: %d - %s", selectedItem.getId(), message);
+                javax.swing.DefaultComboBoxModel<Review> model = (javax.swing.DefaultComboBoxModel<Review>) reviewIdComboBox.getModel();
+                for (int i = 0; i < model.getSize(); i++) {
+                    if (model.getElementAt(i).equals(potentiallyUpdatedItemSummary)) {
+                        reviewIdComboBox.setSelectedIndex(i);
+                        break;
+                    }
+                }
+            } else {
+                outputArea.setText("❌ No review found with ID: " + selectedItem.getId() + " or update failed.");
+            }
+        } catch (NumberFormatException ex) {
+            outputArea.setText("❗ Invalid number format for Prep or Cook Time!");
+            ex.printStackTrace();
+        }
+    }
+    
+    private void deleteReview() {
+        Review selectedItem = (Review) reviewIdComboBox.getSelectedItem();
+        if (selectedItem == null) {
+            outputArea.setText("❗ Please select a review from the dropdown to delete.");
+            return;
+        }
+
+        try {
+            boolean success = revieweDAO.deleteById(selectedItem.getId());
+            if (success) {
+                outputArea.setText("🗑️ Review deleted (ID: " + selectedItem.getId() + ")");
+                populateReviewIdComboBox(); // Refresh dropdown
+                clearInputFields(true); // Clear all fields including combo selection
+            } else {
+                outputArea.setText("❌ No review found with ID: " + selectedItem.getId() + " or delete failed.");
+            }
+        } catch (Exception ex) { // Broader catch for any unexpected DAO issues
+            outputArea.setText("❗ An error occurred during deletion.");
+            ex.printStackTrace();
+        }
     }
 	
 

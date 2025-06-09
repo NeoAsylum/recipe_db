@@ -49,5 +49,12 @@ public class Review {
     public String toString() {
         return "ID: " + id + " | " + user + " | " + recipe + " | " + message;
     }
+    
+    public String toDetailedString() {
+        return String.format(
+            "ID: %d | Recipe: %d | User: %d | Message: %s",
+            id, recipe, user, message
+        );
+    }
 
 }
