@@ -35,6 +35,7 @@ public class RecipeAppGUI extends JFrame {
         tabbedPane.addTab("Recipe Ingredients", new RecipeIngredientPanel());
         tabbedPane.addTab("Deletion Log", new ChangeLogPanel());
         tabbedPane.addTab("User", new UserPanel());
+        tabbedPane.addTab("Review", new ReviewPanel());
 
         SwingUtilities.updateComponentTreeUI(this);
 
